@@ -516,7 +516,7 @@ func (bm *bgpsecManager) validate(e *fsmMsg) {
 func (bm *bgpsecManager) validateASPA(e *fsmMsg) {
 	m := e.MsgData.(*bgp.BGPMessage)
 	update := m.Body.(*bgp.BGPUpdate)
-	log.WithFields(log.Fields{"Topic": "bgpsec"}).Infof("Validate server operated ")
+	log.WithFields(log.Fields{"Topic": "aspa"}).Infof("Validate server operated ")
 
 	var nlri_processed bool
 	var prefix_addr net.IP
@@ -524,7 +524,7 @@ func (bm *bgpsecManager) validateASPA(e *fsmMsg) {
 	var nlri_afi uint16
 	var nlri_safi uint8
 
-	// find the position of bgpsec attribute
+	// find the position of aspa attribute
 	//
 	data := e.payload
 	data = data[bgp.BGP_HEADER_LENGTH:]
@@ -549,7 +549,7 @@ func (bm *bgpsecManager) validateASPA(e *fsmMsg) {
 	}
 
 	//
-	// find nlri attribute first and extract prefix info for bgpsec validation
+	// find nlri attribute first and extract prefix info for aspa validation
 	//
 	for _, path := range e.PathList {
 
