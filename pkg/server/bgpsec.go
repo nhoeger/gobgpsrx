@@ -4,12 +4,17 @@ package server
 //#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test
 //#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 //#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/include/srx
+
+#cgo CFLAGS: -I/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/include/srx
+#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+
 //#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #cgo CFLAGS: -I/opt/project/srx_test1/_inst/include/srx
-#cgo LDFLAGS: -L/opt/project/srx_test1/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+//#cgo LDFLAGS: -L/opt/project/srx_test1/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+#cgo LDFLAGS: -L/usr/local/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #include <stdio.h>
 #include <stdlib.h>
-#include "srxcryptoapi.h"
+#include "/home/centos/Master/NIST-BGP-SRx/srx-crypto-api/srx/srxcryptoapi.h"
 
 void PrintPacked(SCA_BGPSEC_SecurePathSegment p){
      printf("From C path segment \n  pCount:\t%d\n  flags:\t%x\n  asn:\t%d\n\n", p.pCount, p.flags, p.asn);
