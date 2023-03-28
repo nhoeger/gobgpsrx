@@ -11,7 +11,7 @@ package server
 //#cgo LDFLAGS: -L/opt/project/gobgp_test/tools/go_srx_test/srxcryptoapi-0.3.0.0/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #cgo CFLAGS: -I/opt/project/srx_test1/_inst/include/srx
 //#cgo LDFLAGS: -L/opt/project/srx_test1/_inst/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
-#cgo LDFLAGS: -L/usr/local/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
+#cgo LDFLAGS: -L/home/centos/Master/NIST-BGP-SRx/local-6.2.0/lib64/srx -lSRxBGPSecOpenSSL -lSRxCryptoAPI
 #include <stdio.h>
 #include <stdlib.h>
 #include "/home/centos/Master/NIST-BGP-SRx/srx-crypto-api/srx/srxcryptoapi.h"
