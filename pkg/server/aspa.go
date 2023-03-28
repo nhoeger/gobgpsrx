@@ -6,6 +6,11 @@ package server
 #include <stdio.h>
 #include <stdlib.h>
 #include "/home/centos/Master/NIST-BGP-SRx/srx-server/src/client/srx_api.h"
+SRxProxy* createSRxProxy(ValidationReady   validationReadyCallback,
+                         SignaturesReady   signatureReadyCallback,
+                         SyncNotification  requestSynchronizationCallback,
+                         SrxCommManagement communicationMgmtCallback,
+                         uint32_t proxyID, uint32_t proxyAS, void* userPtr);
 bool connectToSRx(SRxProxy* proxy, const char* host, int port,
                   int handshakeTimeout, bool externalSocketControl);
 */
@@ -20,6 +25,7 @@ import (
 
 	_ "os"
 )
+
 //Just a test
 
 func TestFunction(as uint32) int {
@@ -29,8 +35,13 @@ func TestFunction(as uint32) int {
 }
 
 func NewASPAManager(as uint32) int {
-	m := TestFunction(1)
+	srx_proxyID := 1
+	as := 2
+	bgp := 3
+
+	proxy := C.createSRxProxy(srx_proxyID, as, bgp)
+	C.connectToSRx(proxy)
 	log.Debug("Jabadabadu")
 	//m.BgpsecInit(as)
-	return m
+	return 1
 }

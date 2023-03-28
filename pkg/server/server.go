@@ -1600,6 +1600,18 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if peer.fsm.pConf.Config.BgpsecEnable {
 				s.bgpsecManager.validate(e)
 			}
+			if peer.fsm.pConf.Config.ASPAEnable {
+				log.WithFields(log.Fields{
+					"Topic": "Server",
+				}).Info("aspa finished")
+				// TODO add function call
+			}
+			if peer.fsm.pConf.Config.ASConesEnable {
+				log.WithFields(log.Fields{
+					"Topic": "Server",
+				}).Info("ascones finished")
+				// TODO add function call
+			}
 			pathList, eor, notification := peer.handleUpdate(e)
 			if notification != nil {
 				sendfsmOutgoingMsg(peer, nil, notification, true)
