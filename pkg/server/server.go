@@ -139,6 +139,7 @@ type BgpServer struct {
 	roaTable      *table.ROATable
 	uuidMap       map[string]uuid.UUID
 	bgpsecManager *bgpsecManager
+	aspaManager   *aspaManager
 }
 
 func NewBgpServer(opt ...ServerOption) *BgpServer {
@@ -148,6 +149,7 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 	}
 	roaTable := table.NewROATable()
 	bgpsecManager, _ := NewBgpsecManager(0)
+	aspaManager, _ := NewASPAManager(0)
 	s := &BgpServer{
 		neighborMap:   make(map[string]*peer),
 		peerGroupMap:  make(map[string]*peerGroup),
@@ -158,6 +160,7 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 		roaManager:    newROAManager(roaTable),
 		roaTable:      roaTable,
 		bgpsecManager: bgpsecManager,
+		aspaManager:   aspaManager,
 	}
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
@@ -1589,6 +1592,7 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			sendfsmOutgoingMsg(peer, nil, bgp.NewBGPNotificationMessage(m.TypeCode, m.SubTypeCode, m.Data), false)
 			return
 		case *bgp.BGPMessage:
+			log.Info("Received an Update")
 			s.notifyRecvMessageWatcher(peer, e.timestamp, m)
 			peer.fsm.lock.RLock()
 			notEstablished := peer.fsm.state != bgp.BGP_FSM_ESTABLISHED
@@ -1597,20 +1601,19 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			if peer.fsm.pConf.Config.BgpsecEnable {
-				s.bgpsecManager.validate(e)
-			}
+			s.aspaManager.validate()
 			if peer.fsm.pConf.Config.ASPAEnable {
 				log.WithFields(log.Fields{
 					"Topic": "Server",
-				}).Info("aspa finished")
-				// TODO add function call
+				}).Info("ASPA received")
 			}
 			if peer.fsm.pConf.Config.ASConesEnable {
 				log.WithFields(log.Fields{
 					"Topic": "Server",
-				}).Info("ascones finished")
-				// TODO add function call
+				}).Info("ASPA received")
+			}
+			if peer.fsm.pConf.Config.BgpsecEnable {
+				s.bgpsecManager.validate(e)
 			}
 			pathList, eor, notification := peer.handleUpdate(e)
 			if notification != nil {
@@ -2180,7 +2183,7 @@ func (s *BgpServer) StartBgp(ctx context.Context, r *api.StartBgpRequest) error 
 		// update route selection options
 		table.SelectionOptions = c.RouteSelectionOptions.Config
 		table.UseMultiplePaths = c.UseMultiplePaths.Config
-
+		s.aspaManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetKeyPath(s.bgpConfig.Global.Config.KeyPath)
 		s.bgpsecManager.BgpsecInit(s.bgpConfig.Global.Config.KeyPath)
@@ -2758,6 +2761,11 @@ func (s *BgpServer) GetBgp(ctx context.Context, r *api.GetBgpRequest) (*api.GetB
 }
 
 func (s *BgpServer) ListPeer(ctx context.Context, r *api.ListPeerRequest, fn func(*api.Peer)) error {
+	// Code from the original gobgp repository
+	// https://github.com/osrg/gobgp/blob/master/pkg/server/server.go
+	if r == nil {
+		return fmt.Errorf("nil request")
+	}
 	var l []*api.Peer
 	s.mgmtOperation(func() error {
 		address := r.Address

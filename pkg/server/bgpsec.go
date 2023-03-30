@@ -38,9 +38,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/osrg/gobgp/internal/pkg/config"
 	"github.com/osrg/gobgp/pkg/packet/bgp"
 	log "github.com/sirupsen/logrus"
+
 	//_ "github.com/osrg/gobgp/table"
 	"net"
 	_ "os"
@@ -709,6 +711,8 @@ func (bm *bgpsecManager) SetKeyPath(keyPath string) error {
 }
 
 func NewBgpsecManager(as uint32) (*bgpsecManager, error) {
+	log.Info("as for bgp sec: ")
+	log.Info(as)
 	m := &bgpsecManager{
 		AS:                      as,
 		bgpsec_path_attr:        make([]byte, 0),

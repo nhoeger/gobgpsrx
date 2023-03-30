@@ -19,14 +19,15 @@ import "C"
 import (
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
-
 	//_ "github.com/osrg/gobgp/table"
-
 	_ "os"
+
+	log "github.com/sirupsen/logrus"
 )
 
-//Just a test
+type aspaManager struct {
+	AS uint32
+}
 
 func TestFunction(as uint32) int {
 	b := C.connectToSRx
@@ -34,14 +35,30 @@ func TestFunction(as uint32) int {
 	return 1
 }
 
-func NewASPAManager(as uint32) int {
-	srx_proxyID := 1
-	as := 2
-	bgp := 3
+func (am *aspaManager) SetAS(as uint32) error {
+	log.Info("Changing ASPA AS to:")
+	log.Info(as)
+	if am.AS != 0 {
+		return fmt.Errorf("AS was already configured")
+	}
+	am.AS = as
+	return nil
+}
 
-	proxy := C.createSRxProxy(srx_proxyID, as, bgp)
-	C.connectToSRx(proxy)
-	log.Debug("Jabadabadu")
-	//m.BgpsecInit(as)
-	return 1
+func (am *aspaManager) validate() bool {
+	log.Info("In Validation Function")
+	ret := false
+	log.Info("Returning with")
+	log.Info(ret)
+	return ret
+}
+
+func NewASPAManager(as uint32) (*aspaManager, error) {
+	log.Info("+---------------------------------------+")
+	log.Info("Creating New ASPA Manager. AS:")
+	log.Info(as)
+	am := &aspaManager{
+		AS: as,
+	}
+	return am, nil
 }

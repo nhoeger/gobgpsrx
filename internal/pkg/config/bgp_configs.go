@@ -3165,6 +3165,8 @@ type NeighborConfig struct {
 	// bgpsec enable added
 	BgpsecEnable bool   `mapstructure:"bgpsec-enable" json:"bgpsec-enable,omitempty"`
 	Ski          string `mapstructure:"SKI" json:"SKI,omitempty"`
+	ASPAEnable 	 bool 	`mapstructure:"aspa-enable" json:"aspa-enable,omitempty"`
+	ASConesEnable bool  `mapstructure:"ascones-enable" json:"ascones-enable,omitempty"`
 }
 
 func (lhs *NeighborConfig) Equal(rhs *NeighborConfig) bool {
