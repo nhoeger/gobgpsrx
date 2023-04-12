@@ -1592,7 +1592,7 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			sendfsmOutgoingMsg(peer, nil, bgp.NewBGPNotificationMessage(m.TypeCode, m.SubTypeCode, m.Data), false)
 			return
 		case *bgp.BGPMessage:
-			log.Info("Received an Update")
+			log.Info("Received an Update. Starting to extract the information.")
 			s.notifyRecvMessageWatcher(peer, e.timestamp, m)
 			peer.fsm.lock.RLock()
 			notEstablished := peer.fsm.state != bgp.BGP_FSM_ESTABLISHED
@@ -1601,7 +1601,7 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			s.aspaManager.validate()
+			s.aspaManager.validate(e)
 			if peer.fsm.pConf.Config.ASPAEnable {
 				log.WithFields(log.Fields{
 					"Topic": "Server",
