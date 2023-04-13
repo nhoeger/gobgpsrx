@@ -6,6 +6,7 @@ package server
 #include <stdio.h>
 #include <stdlib.h>
 #include "/home/centos/Master/NIST-BGP-SRx/srx-server/src/client/srx_api.h"
+#include "/usr/include/netinet/in.h"
 SRxProxy* createSRxProxy(ValidationReady   validationReadyCallback,
                          SignaturesReady   signatureReadyCallback,
                          SyncNotification  requestSynchronizationCallback,
@@ -32,6 +33,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math/big"
 	"net"
 	"unsafe"
 
@@ -107,7 +109,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	var nlri_safi uint8
 
 	var Res C.SRxResultSource
-	Res = 0
+	Res = 3
 	var test C.SRxResult
 	test.roaResult = 0
 	test.bgpsecResult = 0
@@ -147,6 +149,16 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	}
 	log.Info("----------------------------------------")
 	log.Info("Setting values (addr and length): ")
+
+	var tttt C.in_addr_t
+	var long uint32
+	//binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
+	(binary.Read(bytes.NewBuffer(net.ParseIP("172.16.1.0").To4()), binary.BigEndian, &long))
+	tttt = C.in_addr_t(long)
+	log.Info("Printing tolle Dinge")
+	log.Info(tttt)
+	log.Info(long)
+
 	prefix_addr = net.IPv4(172, 16, 1, 0)
 	prefix_len = 24
 	log.Info(prefix_addr)
@@ -158,19 +170,26 @@ func (am *aspaManager) validate(e *fsmMsg) {
 		V4:      [16]byte{},
 	}
 	prefix2 := (*C.IPPrefix)(C.malloc(C.sizeof_IPPrefix))
+	log.Info("size of prefix:")
+	log.Info(prefix2)
 
 	pxip := prefix_addr
 	copy(px.V4[:], pxip)
 	px.Pack(unsafe.Pointer(prefix2))
+	px.V4[11] = 0
+	px.V4[10] = 0
 
 	cIpAddr := C.IPAddress{
 		version: C.uint8_t(px.Version),
-		addr:    px.V4,
+		addr:    [16]byte(px.V4),
 	}
 
 	var prefix C.IPPrefix
 	prefix.ip = cIpAddr
 	prefix.length = C.uint8_t(prefix_len)
+	log.Info(prefix.ip.addr)
+	log.Info(prefix.ip.version)
+	log.Info("----------------------------------------")
 	// -----------------------------------------------------------------
 	working_path := e.PathList
 
@@ -182,9 +201,16 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	ASList.segments = testing_1
 	ASList.asType = 2
 	ASList.asRelationship = 0
+	// Hier gehts weiter:
+	// - Default Result
+	// - Prefix Length
+	//
+	// Erledigt:
+	// - Proxy
+	// - testList
 
 	var testList C.SRxASPathList
-	testList.length = uint8((len(working_path)))
+	testList.length = C.uchar((len(working_path)))
 	testList.segments = &testing_1
 	testList.asType = 2
 	testList.asRelationship = 1
@@ -240,4 +266,25 @@ func (g *IPAddress) Pack(out unsafe.Pointer) {
 		b, _ := buf.ReadByte()
 		o[i] = C.uchar(b)
 	}
+}
+
+func ConvertIP(ipv4 string) C.IPv4Address {
+	var result C.IPv4Address
+
+	IPv4Int := big.NewInt(0)
+	IPv4Int.SetBytes((net.ParseIP(ipv4)).To4())
+
+	ipv4Decimal := IPv4Int.Int64()
+
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.BigEndian, uint32(ipv4Decimal))
+
+	if err != nil {
+		fmt.Println("Unable to write to buffer:", err)
+	}
+	result[0] = buf.Bytes()[0]
+	result[1] = buf.Bytes()[1]
+	result[2] = buf.Bytes()[2]
+	result[3] = buf.Bytes()[3]
+	return result
 }
