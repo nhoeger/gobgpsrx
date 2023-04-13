@@ -18,6 +18,8 @@ void verifyUpdate(SRxProxy* proxy, uint32_t localID,
                   SRxDefaultResult* defaultResult,
                   IPPrefix* prefix, uint32_t as32,
                   BGPSecData* bgpsec, SRxASPathList asPathList);
+void setProxyLogger(ProxyLogger logger);
+typedef void (*ProxyLogger)(int level, const char* fmt, va_list arguments);
 extern void ValEasyCallback();
 extern void SignatureEasyCallback();
 extern void SyncEasyCallback();
@@ -30,8 +32,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"net"
+	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
 	_ "os"
@@ -96,14 +98,13 @@ func (am *aspaManager) SetAS(as uint32) error {
 func (am *aspaManager) validate(e *fsmMsg) {
 	//m := e.MsgData.(*bgp.BGPMessage)
 	//update := m.Body.(*bgp.BGPUpdate)
-	log.WithFields(log.Fields{"Topic": "bgpsec"}).Infof("Validate server operated ")
+	log.WithFields(log.Fields{"Topic": "ASPA"}).Infof("Validate server operated ")
 
 	var nlri_processed bool
 	var prefix_addr net.IP
 	var prefix_len uint8
 	var nlri_afi uint16
 	var nlri_safi uint8
-	log.Info("In Validation Function")
 
 	var Res C.SRxResultSource
 	Res = 0
@@ -116,63 +117,76 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	defaultResult.resSourceBGPSEC = Res
 	defaultResult.resSourceASPA = Res
 	defaultResult.result = test
-	log.Info("In Validation Function 2")
 
 	//
 	// find nlri attribute first and extract prefix info for bgpsec validation
 	//
 	for _, path := range e.PathList {
-
+		log.Info("First loop")
+		log.Info(path)
+		log.Info(path.GetOrigin())
+		log.Info(path.GetSource())
 		// find MP NLRI attribute first
 		for _, p := range path.GetPathAttrs() {
+			log.Info("Second Loop")
+			log.Info(p)
 			typ := uint(p.GetType())
 			if typ == uint(bgp.BGP_ATTR_TYPE_MP_REACH_NLRI) {
+				log.Info("In if")
 				log.Debug("received MP NLRI: %#v", path)
 				prefix_addr = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
 				prefix_len = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
 				nlri_afi = p.(*bgp.PathAttributeMpReachNLRI).AFI
 				nlri_safi = p.(*bgp.PathAttributeMpReachNLRI).SAFI
 
-				log.WithFields(log.Fields{"Topic": "Bgpsec"}).Debug("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
+				log.WithFields(log.Fields{"Topic": "ASPA"}).Debug("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
 				nlri_processed = true
 				log.Debug("received MP NLRI: %#v", nlri_processed)
 			}
 		}
 	}
-
-	log.Info("In Validation Function 3")
+	log.Info("----------------------------------------")
+	log.Info("Setting values (addr and length): ")
+	prefix_addr = net.IPv4(172, 16, 1, 0)
+	prefix_len = 24
+	log.Info(prefix_addr)
+	log.Info(prefix_len)
+	log.Info("----------------------------------------")
 
 	px := &IPAddress{
 		Version: 4,
 		V4:      [16]byte{},
 	}
-	//pxip := prefix_addr
-	//copy(px.Addr[:], pxip)
-	//px.Pack(unsafe.Pointer(prefix2))
+	prefix2 := (*C.IPPrefix)(C.malloc(C.sizeof_IPPrefix))
+
+	pxip := prefix_addr
+	copy(px.V4[:], pxip)
+	px.Pack(unsafe.Pointer(prefix2))
 
 	cIpAddr := C.IPAddress{
-		version: C.uint8_t(4),
+		version: C.uint8_t(px.Version),
 		addr:    px.V4,
 	}
 
 	var prefix C.IPPrefix
 	prefix.ip = cIpAddr
-	prefix.length = 24
-
-	log.Info("In Validation Function 4")
+	prefix.length = C.uint8_t(prefix_len)
+	// -----------------------------------------------------------------
+	working_path := e.PathList
 
 	var testing_1 C.ASSEGMENT
+	testing_1.asn = 65004
 
 	var ASList PathList
-	ASList.length = 1
+	ASList.length = uint8((len(working_path)))
 	ASList.segments = testing_1
 	ASList.asType = 2
 	ASList.asRelationship = 0
 
 	var testList C.SRxASPathList
-	testList.length = 1
+	testList.length = uint8((len(working_path)))
 	testList.segments = &testing_1
-	testList.asType = 1
+	testList.asType = 2
 	testList.asRelationship = 1
 
 	var number1 C.uchar
@@ -189,19 +203,17 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	go_bgpsec.local_as = 1
 	go_bgpsec.bgpsec_path_attr = &number1
 
-	log.Info("In Validation Function 6")
-
-	C.verifyUpdate(&am.Proxy, 1, false, false, true, &defaultResult, &prefix, 65002, nil, testList)
-
-	log.Info("In Validation Function 7")
+	log.Info("Before C Validation Function")
+	C.verifyUpdate(&am.Proxy, 1, false, false, true, &defaultResult, &prefix, 65001, nil, testList)
+	log.Info("After C Validation Function")
 }
 
 func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("+---------------------------------------+")
 	log.Info("Creating New ASPA Manager. AS:")
 	log.Info(as)
-	log.Info("Trying to create an Proxy:")
-	go_proxy := C.createSRxProxy(C.closure(C.ValEasyCallback), C.closure(C.SignatureEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 0, C.uint(as), nil)
+	go_proxy := C.createSRxProxy(C.closure(C.ValEasyCallback), C.closure(C.SignatureEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 1, C.uint(as), nil)
+	log.Info("Created Proxy:")
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
 	handshakeTimeout := C.int(100)
@@ -213,27 +225,19 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 		Proxy:            *go_proxy,
 		ConnectionStatus: bool(connectionStatus),
 	}
+
 	return am, nil
 }
 
-// https://www.socketloop.com/tutorials/golang-convert-ipv4-address-to-packed-32-bit-binary-format
-func ConvertIP(ipv4 string) C.IPv4Address {
-	var result C.IPv4Address
+func (g *IPAddress) Pack(out unsafe.Pointer) {
 
-	IPv4Int := big.NewInt(0)
-	IPv4Int.SetBytes((net.ParseIP(ipv4)).To4())
+	buf := &bytes.Buffer{}
+	binary.Write(buf, binary.BigEndian, g)
+	l := buf.Len()
+	o := (*[1 << 20]C.uchar)(out)
 
-	ipv4Decimal := IPv4Int.Int64()
-
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.BigEndian, uint32(ipv4Decimal))
-
-	if err != nil {
-		fmt.Println("Unable to write to buffer:", err)
+	for i := 0; i < l; i++ {
+		b, _ := buf.ReadByte()
+		o[i] = C.uchar(b)
 	}
-	result[0] = buf.Bytes()[0]
-	result[1] = buf.Bytes()[1]
-	result[2] = buf.Bytes()[2]
-	result[3] = buf.Bytes()[3]
-	return result
 }
