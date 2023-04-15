@@ -19,9 +19,17 @@ void verifyUpdate(SRxProxy* proxy, uint32_t localID,
                   SRxDefaultResult* defaultResult,
                   IPPrefix* prefix, uint32_t as32,
                   BGPSecData* bgpsec, SRxASPathList asPathList);
+bool isConnected(SRxProxy* proxy);
 void setProxyLogger(ProxyLogger logger);
+bool processPackets(SRxProxy* proxy);
 typedef void (*ProxyLogger)(int level, const char* fmt, va_list arguments);
-extern void ValEasyCallback();
+extern bool Go_ValidationReady(SRxUpdateID          updateID,
+                                uint32_t	           localID,
+                                ValidationResultType valType,
+                                uint8_t              roaResult,
+                                uint8_t              bgpsecResult,
+                                uint8_t              aspaResult,
+                                void* userPtr);
 extern void SignatureEasyCallback();
 extern void SyncEasyCallback();
 extern void SrxCommEasyCallback();
@@ -40,7 +48,6 @@ import (
 	//_ "github.com/osrg/gobgp/table"
 	_ "os"
 
-	"github.com/osrg/gobgp/pkg/packet/bgp"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -66,9 +73,11 @@ type aspaManager struct {
 	Proxy            C.SRxProxy
 }
 
-//export ValEasyCallback
-func ValEasyCallback() {
-	log.Info("validation callback from srx proxy")
+//export Go_ValidationReady
+func Go_ValidationReady(updateID C.SRxUpdateID, localID C.uint32_t, valType C.ValidationResultType, roaResult C.uint8_t, bgpsecResult C.uint8_t, aspaResult C.uint8_t, userPtr unsafe.Pointer) C.bool {
+	// your validation logic here
+	log.Info("Called")
+	return C.bool(true) // or false, depending on the result of your validation
 }
 
 //export SignatureEasyCallback
@@ -98,15 +107,24 @@ func (am *aspaManager) SetAS(as uint32) error {
 }
 
 func (am *aspaManager) validate(e *fsmMsg) {
-	//m := e.MsgData.(*bgp.BGPMessage)
-	//update := m.Body.(*bgp.BGPUpdate)
-	log.WithFields(log.Fields{"Topic": "ASPA"}).Infof("Validate server operated ")
+	log.Info("In ASPA Validation Function")
+	log.Info("Connection Status")
+	log.Info(C.isConnected(&am.Proxy))
+	//var tttt C.in_addr_t
+	//var long uint32
+	//binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
+	//(binary.Read(bytes.NewBuffer(net.ParseIP("172.16.1.0").To4()), binary.BigEndian, &long))
+	//tttt = C.in_addr_t(long)
+	//log.Info("Printing tolle Dinge")
+	//log.Info(tttt)
+	//log.Info(long)
 
-	var nlri_processed bool
-	var prefix_addr net.IP
-	var prefix_len uint8
-	var nlri_afi uint16
-	var nlri_safi uint8
+	// Preparing the proxy
+	proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
+	proxy = &am.Proxy
+
+	// Preparing the defaultResult
+	defaultResult := (*C.SRxDefaultResult)(C.malloc(C.sizeof_SRxDefaultResult))
 
 	var Res C.SRxResultSource
 	Res = 3
@@ -114,100 +132,44 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	test.roaResult = 0
 	test.bgpsecResult = 0
 	test.aspaResult = 0
-	var defaultResult C.SRxDefaultResult
 	defaultResult.resSourceROA = Res
 	defaultResult.resSourceBGPSEC = Res
 	defaultResult.resSourceASPA = Res
 	defaultResult.result = test
 
-	//
-	// find nlri attribute first and extract prefix info for bgpsec validation
-	//
-	for _, path := range e.PathList {
-		log.Info("First loop")
-		log.Info(path)
-		log.Info(path.GetOrigin())
-		log.Info(path.GetSource())
-		// find MP NLRI attribute first
-		for _, p := range path.GetPathAttrs() {
-			log.Info("Second Loop")
-			log.Info(p)
-			typ := uint(p.GetType())
-			if typ == uint(bgp.BGP_ATTR_TYPE_MP_REACH_NLRI) {
-				log.Info("In if")
-				log.Debug("received MP NLRI: %#v", path)
-				prefix_addr = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
-				prefix_len = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
-				nlri_afi = p.(*bgp.PathAttributeMpReachNLRI).AFI
-				nlri_safi = p.(*bgp.PathAttributeMpReachNLRI).SAFI
-
-				log.WithFields(log.Fields{"Topic": "ASPA"}).Debug("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
-				nlri_processed = true
-				log.Debug("received MP NLRI: %#v", nlri_processed)
-			}
-		}
-	}
-	log.Info("----------------------------------------")
-	log.Info("Setting values (addr and length): ")
-
-	var tttt C.in_addr_t
-	var long uint32
-	//binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
-	(binary.Read(bytes.NewBuffer(net.ParseIP("172.16.1.0").To4()), binary.BigEndian, &long))
-	tttt = C.in_addr_t(long)
-	log.Info("Printing tolle Dinge")
-	log.Info(tttt)
-	log.Info(long)
-
-	prefix_addr = net.IPv4(172, 16, 1, 0)
-	prefix_len = 24
+	// Preparing the Prefix
+	prefix_addr := net.IPv4(172, 16, 1, 0)
+	prefix_len := 24
 	log.Info(prefix_addr)
 	log.Info(prefix_len)
-	log.Info("----------------------------------------")
 
 	px := &IPAddress{
 		Version: 4,
 		V4:      [16]byte{},
 	}
-	prefix2 := (*C.IPPrefix)(C.malloc(C.sizeof_IPPrefix))
-	log.Info("size of prefix:")
-	log.Info(prefix2)
+
+	prefix := (*C.IPPrefix)(C.malloc(C.sizeof_IPPrefix))
 
 	pxip := prefix_addr
 	copy(px.V4[:], pxip)
-	px.Pack(unsafe.Pointer(prefix2))
+	px.Pack(unsafe.Pointer(prefix))
 	px.V4[11] = 0
 	px.V4[10] = 0
 
-	cIpAddr := C.IPAddress{
-		version: C.uint8_t(px.Version),
-		addr:    [16]byte(px.V4),
-	}
+	prefix.ip.addr = [16]byte(px.V4)
+	prefix.ip.version = C.uint8_t(px.Version)
+	prefix.ip.version = 4
 
-	var prefix C.IPPrefix
-	prefix.ip = cIpAddr
-	prefix.length = C.uint8_t(prefix_len)
-	log.Info(prefix.ip.addr)
-	log.Info(prefix.ip.version)
-	log.Info("----------------------------------------")
+	// Preparing BGPSec data
+
+	// Preparing the asPathList
+	asPathList := (*C.SRxASPathList)(C.malloc(C.sizeof_SRxASPathList))
+
 	// -----------------------------------------------------------------
 	working_path := e.PathList
 
 	var testing_1 C.ASSEGMENT
 	testing_1.asn = 65004
-
-	var ASList PathList
-	ASList.length = uint8((len(working_path)))
-	ASList.segments = testing_1
-	ASList.asType = 2
-	ASList.asRelationship = 0
-	// Hier gehts weiter:
-	// - Default Result
-	// - Prefix Length
-	//
-	// Erledigt:
-	// - Proxy
-	// - testList
 
 	var testList C.SRxASPathList
 	testList.length = C.uchar((len(working_path)))
@@ -215,11 +177,11 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	testList.asType = 2
 	testList.asRelationship = 1
 
+	go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
 	var number1 C.uchar
 	number1 = 1
 	var number2 C.uint
 	number2 = 1
-	var go_bgpsec C.BGPSecData
 	go_bgpsec.numberHops = 1
 	go_bgpsec.asPath = &number2
 	go_bgpsec.attr_length = 1
@@ -228,17 +190,39 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	go_bgpsec.reserved = 1
 	go_bgpsec.local_as = 1
 	go_bgpsec.bgpsec_path_attr = &number1
+	asPathList = &testList
+	log.Info(asPathList)
 
 	log.Info("Before C Validation Function")
-	C.verifyUpdate(&am.Proxy, 1, false, false, true, &defaultResult, &prefix, 65001, nil, testList)
+	C.verifyUpdate(proxy, 1, true, true, true, defaultResult, prefix, 65004, go_bgpsec, testList)
+	//C.verifyUpdate(proxy, 1, false, false, true, nil, nil, 65001, nil, testList)
 	log.Info("After C Validation Function")
+
+	//C.free(unsafe.Pointer(proxy))
+	//C.free(unsafe.Pointer(defaultResult))
+	//C.free(unsafe.Pointer(prefix))
+	//C.free(unsafe.Pointer(go_bgpsec))
+	//C.free(unsafe.Pointer(asPathList))
+	log.Info("Trying new things")
+	tt := C.processPackets(proxy)
+
+	log.Info((tt)) /*
+		for i := 1; i < 5; i++ {
+			time.Sleep(8 * time.Second)
+			log.Info((tt))
+		}*/
 }
+
+type SRxUpdateID int
+type ValidationResultType int
+
+//type ValidationReady func(updateID SRxUpdateID, localID uint32, valType ValidationResultType, roaResult uint8, bgpsecResult uint8, aspaResult uint8, userPtr unsafe.Pointer) bool
 
 func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("+---------------------------------------+")
 	log.Info("Creating New ASPA Manager. AS:")
 	log.Info(as)
-	go_proxy := C.createSRxProxy(C.closure(C.ValEasyCallback), C.closure(C.SignatureEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 1, C.uint(as), nil)
+	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.SignatureEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 1, C.uint(as), nil)
 	log.Info("Created Proxy:")
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
