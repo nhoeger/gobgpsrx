@@ -21,8 +21,11 @@ void verifyUpdate(SRxProxy* proxy, uint32_t localID,
                   BGPSecData* bgpsec, SRxASPathList asPathList);
 bool isConnected(SRxProxy* proxy);
 void setProxyLogger(ProxyLogger logger);
+bool disconnectFromSRx(SRxProxy* proxy, uint16_t keepWindow);
 bool processPackets(SRxProxy* proxy);
 typedef void (*ProxyLogger)(int level, const char* fmt, va_list arguments);
+typedef void (*SignaturesReady)(SRxUpdateID updId, BGPSecCallbackData* data, void* userPtr);
+
 extern bool Go_ValidationReady(SRxUpdateID          updateID,
                                 uint32_t	           localID,
                                 ValidationResultType valType,
@@ -30,7 +33,9 @@ extern bool Go_ValidationReady(SRxUpdateID          updateID,
                                 uint8_t              bgpsecResult,
                                 uint8_t              aspaResult,
                                 void* userPtr);
-extern void SignatureEasyCallback();
+extern void signaturesReady(SRxUpdateID updId,
+								BGPSecCallbackData* data,
+                                void* userPtr);
 extern void SyncEasyCallback();
 extern void SrxCommEasyCallback();
 typedef void (*closure)();
@@ -43,6 +48,8 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strconv"
+	"strings"
 	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
@@ -75,15 +82,14 @@ type aspaManager struct {
 
 //export Go_ValidationReady
 func Go_ValidationReady(updateID C.SRxUpdateID, localID C.uint32_t, valType C.ValidationResultType, roaResult C.uint8_t, bgpsecResult C.uint8_t, aspaResult C.uint8_t, userPtr unsafe.Pointer) C.bool {
-	// your validation logic here
 	log.Info("Called")
-	return C.bool(true) // or false, depending on the result of your validation
+	return C.bool(true)
 }
 
-//export SignatureEasyCallback
-func SignatureEasyCallback() {
+/*//export signaturesReady
+func signaturesReady(updId C.SRxUpdateID, data &(C.BGPSecCallbackData), userPtr unsafe.Pointer) {
 	log.Info("signature callback from srx proxy")
-}
+}*/
 
 //export SyncEasyCallback
 func SyncEasyCallback() {
@@ -107,17 +113,25 @@ func (am *aspaManager) SetAS(as uint32) error {
 }
 
 func (am *aspaManager) validate(e *fsmMsg) {
-	log.Info("In ASPA Validation Function")
+	// extracting the propagated prefix
+	prefix_len := 0
+	prefix_addr := net.ParseIP("0.0.0.0")
+	log.Info("In ASPA validation function")
+	for _, path := range e.PathList {
+		path_string := path.String()
+		words := strings.Fields(path_string)
+		for _, word := range words {
+			for j, ch := range word {
+				if ch == '/' {
+					tmp_pref, _ := strconv.Atoi(word[j+1:])
+					prefix_len = tmp_pref
+					prefix_addr = net.ParseIP(word[:j])
+				}
+			}
+		}
+	}
 	log.Info("Connection Status")
 	log.Info(C.isConnected(&am.Proxy))
-	//var tttt C.in_addr_t
-	//var long uint32
-	//binary.Read(bytes.NewBuffer(net.ParseIP(ip).To4()), binary.BigEndian, &long)
-	//(binary.Read(bytes.NewBuffer(net.ParseIP("172.16.1.0").To4()), binary.BigEndian, &long))
-	//tttt = C.in_addr_t(long)
-	//log.Info("Printing tolle Dinge")
-	//log.Info(tttt)
-	//log.Info(long)
 
 	// Preparing the proxy
 	proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
@@ -126,8 +140,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	// Preparing the defaultResult
 	defaultResult := (*C.SRxDefaultResult)(C.malloc(C.sizeof_SRxDefaultResult))
 
-	var Res C.SRxResultSource
-	Res = 3
+	var Res C.SRxResultSource = 3
 	var test C.SRxResult
 	test.roaResult = 0
 	test.bgpsecResult = 0
@@ -138,8 +151,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	defaultResult.result = test
 
 	// Preparing the Prefix
-	prefix_addr := net.IPv4(172, 16, 1, 0)
-	prefix_len := 24
 	log.Info(prefix_addr)
 	log.Info(prefix_len)
 
@@ -203,18 +214,16 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	//C.free(unsafe.Pointer(prefix))
 	//C.free(unsafe.Pointer(go_bgpsec))
 	//C.free(unsafe.Pointer(asPathList))
-	log.Info("Trying new things")
-	tt := C.processPackets(proxy)
+	//log.Info("Trying new things")
+	//tt := C.processPackets(proxy)
 
-	log.Info((tt)) /*
+	//log.Info((tt))
+	/*
 		for i := 1; i < 5; i++ {
 			time.Sleep(8 * time.Second)
 			log.Info((tt))
 		}*/
 }
-
-type SRxUpdateID int
-type ValidationResultType int
 
 //type ValidationReady func(updateID SRxUpdateID, localID uint32, valType ValidationResultType, roaResult uint8, bgpsecResult uint8, aspaResult uint8, userPtr unsafe.Pointer) bool
 
@@ -222,7 +231,8 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("+---------------------------------------+")
 	log.Info("Creating New ASPA Manager. AS:")
 	log.Info(as)
-	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.SignatureEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 1, C.uint(as), nil)
+	log.Info("AS would be used for Proxy Creation. Manually forcing differnt ASN")
+	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.SyncEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 1, C.uint(65001), nil)
 	log.Info("Created Proxy:")
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
