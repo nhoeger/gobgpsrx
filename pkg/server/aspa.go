@@ -47,6 +47,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -114,7 +115,9 @@ func (am *aspaManager) SetAS(as uint32) error {
 }
 
 func (am *aspaManager) validate(e *fsmMsg) {
+	log.Info("+---------------------------------------------------------+")
 	// extracting the propagated prefix
+	update_id := rand.Intn(100)
 	prefix_len := 0
 	prefix_addr := net.ParseIP("0.0.0.0")
 	for _, path := range e.PathList {
@@ -166,7 +169,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 
 	prefix.ip.addr = [16]byte(px.V4)
 	prefix.ip.version = C.uint8_t(px.Version)
-	prefix.ip.version = C.uint8_t(prefix_len)
+	prefix.length = C.uint8_t(prefix_len)
 
 	// Preparing the asPathList
 	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
@@ -192,12 +195,21 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	go_bgpsec.local_as = 1
 	go_bgpsec.bgpsec_path_attr = &number1
 
-	C.verifyUpdate(proxy, 0, true, true, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
+	log.Info(proxy.proxyAS)
+	log.Info(update_id)
+	log.Info(prefix.ip.addr)
+	log.Info(prefix.ip.version)
+	log.Info(prefix.length)
+	log.Info(asPathList.asRelationship)
+	log.Info(asPathList.asType)
+	log.Info(asPathList.segments.asn)
+	C.verifyUpdate(proxy, C.uint(update_id), true, true, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
 
 	//C.free(unsafe.Pointer(proxy))
-	//C.free(unsafe.Pointer(defaultResult))
-	//C.free(unsafe.Pointer(prefix))
-	//C.free(unsafe.Pointer(go_bgpsec))
+	C.free(unsafe.Pointer(defaultResult))
+	C.free(unsafe.Pointer(prefix))
+	C.free(unsafe.Pointer(go_bgpsec))
+	log.Info("+---------------------------------------------------------+")
 	//C.free(unsafe.Pointer(asPathList))
 	//log.Info("Trying new things")
 	//tt := C.processPackets(proxy)
