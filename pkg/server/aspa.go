@@ -82,8 +82,9 @@ type aspaManager struct {
 
 //export Go_ValidationReady
 func Go_ValidationReady(updateID C.SRxUpdateID, localID C.uint32_t, valType C.ValidationResultType, roaResult C.uint8_t, bgpsecResult C.uint8_t, aspaResult C.uint8_t, userPtr unsafe.Pointer) C.bool {
-	log.Info("Called")
-	return C.bool(true)
+	log.Info("Called Go_ValidationReady")
+	SyncEasyCallback()
+	return C.bool(false)
 }
 
 /*//export signaturesReady
@@ -116,7 +117,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	// extracting the propagated prefix
 	prefix_len := 0
 	prefix_addr := net.ParseIP("0.0.0.0")
-	log.Info("In ASPA validation function")
 	for _, path := range e.PathList {
 		path_string := path.String()
 		words := strings.Fields(path_string)
@@ -151,9 +151,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	defaultResult.result = test
 
 	// Preparing the Prefix
-	log.Info(prefix_addr)
-	log.Info(prefix_len)
-
 	px := &IPAddress{
 		Version: 4,
 		V4:      [16]byte{},
@@ -169,30 +166,23 @@ func (am *aspaManager) validate(e *fsmMsg) {
 
 	prefix.ip.addr = [16]byte(px.V4)
 	prefix.ip.version = C.uint8_t(px.Version)
-	prefix.ip.version = 4
-
-	// Preparing BGPSec data
+	prefix.ip.version = C.uint8_t(prefix_len)
 
 	// Preparing the asPathList
-	asPathList := (*C.SRxASPathList)(C.malloc(C.sizeof_SRxASPathList))
-
-	// -----------------------------------------------------------------
+	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
+	var asPathList C.SRxASPathList
 	working_path := e.PathList
-
 	var testing_1 C.ASSEGMENT
-	testing_1.asn = 65004
+	testing_1.asn = C.uint(as_int)
+	asPathList.length = C.uchar((len(working_path)))
+	asPathList.segments = &testing_1
+	asPathList.asType = 2
+	asPathList.asRelationship = 1
 
-	var testList C.SRxASPathList
-	testList.length = C.uchar((len(working_path)))
-	testList.segments = &testing_1
-	testList.asType = 2
-	testList.asRelationship = 1
-
+	// Preparing BGPSec data
 	go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
-	var number1 C.uchar
-	number1 = 1
-	var number2 C.uint
-	number2 = 1
+	var number1 C.uchar = 1
+	var number2 C.uint = 1
 	go_bgpsec.numberHops = 1
 	go_bgpsec.asPath = &number2
 	go_bgpsec.attr_length = 1
@@ -201,13 +191,8 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	go_bgpsec.reserved = 1
 	go_bgpsec.local_as = 1
 	go_bgpsec.bgpsec_path_attr = &number1
-	asPathList = &testList
-	log.Info(asPathList)
 
-	log.Info("Before C Validation Function")
-	C.verifyUpdate(proxy, 1, true, true, true, defaultResult, prefix, 65004, go_bgpsec, testList)
-	//C.verifyUpdate(proxy, 1, false, false, true, nil, nil, 65001, nil, testList)
-	log.Info("After C Validation Function")
+	C.verifyUpdate(proxy, 0, true, true, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
 
 	//C.free(unsafe.Pointer(proxy))
 	//C.free(unsafe.Pointer(defaultResult))
@@ -216,13 +201,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	//C.free(unsafe.Pointer(asPathList))
 	//log.Info("Trying new things")
 	//tt := C.processPackets(proxy)
-
-	//log.Info((tt))
-	/*
-		for i := 1; i < 5; i++ {
-			time.Sleep(8 * time.Second)
-			log.Info((tt))
-		}*/
 }
 
 //type ValidationReady func(updateID SRxUpdateID, localID uint32, valType ValidationResultType, roaResult uint8, bgpsecResult uint8, aspaResult uint8, userPtr unsafe.Pointer) bool
