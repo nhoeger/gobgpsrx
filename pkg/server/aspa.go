@@ -23,30 +23,17 @@ bool isConnected(SRxProxy* proxy);
 void setProxyLogger(ProxyLogger logger);
 bool disconnectFromSRx(SRxProxy* proxy, uint16_t keepWindow);
 bool processPackets(SRxProxy* proxy);
-typedef void (*ProxyLogger)(int level, const char* fmt, va_list arguments);
-typedef void (*SignaturesReady)(SRxUpdateID updId, BGPSecCallbackData* data, void* userPtr);
-
-extern bool Go_ValidationReady(SRxUpdateID          updateID,
-                                uint32_t	           localID,
-                                ValidationResultType valType,
-                                uint8_t              roaResult,
-                                uint8_t              bgpsecResult,
-                                uint8_t              aspaResult,
-                                void* userPtr);
-extern void signaturesReady(SRxUpdateID updId,
-								BGPSecCallbackData* data,
-                                void* userPtr);
-extern void SyncEasyCallback();
-extern void SrxCommEasyCallback();
-typedef void (*closure)();
-*/
+extern bool Go_ValidationReady(SRxUpdateID updateID,uint32_t localID, ValidationResultType valType, uint8_t roaResult, uint8_t bgpsecResult, uint8_t aspaResult, void* userPtr);
+extern void Go_SignaturesReady(SRxUpdateID updId,BGPSecCallbackData* data, void* userPtr);
+extern void Go_SyncNotification(void* userPtr);
+extern void Go_SrxCommManagement(SRxProxyCommCode code, int subCode, void* userPtr);
+typedef void (*closure)();*/
 import "C"
 
 import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"math/rand"
 	"net"
 	"strconv"
@@ -84,22 +71,21 @@ type aspaManager struct {
 //export Go_ValidationReady
 func Go_ValidationReady(updateID C.SRxUpdateID, localID C.uint32_t, valType C.ValidationResultType, roaResult C.uint8_t, bgpsecResult C.uint8_t, aspaResult C.uint8_t, userPtr unsafe.Pointer) C.bool {
 	log.Info("Called Go_ValidationReady")
-	SyncEasyCallback()
 	return C.bool(false)
 }
 
-/*//export signaturesReady
-func signaturesReady(updId C.SRxUpdateID, data &(C.BGPSecCallbackData), userPtr unsafe.Pointer) {
+//export Go_SignaturesReady
+func Go_SignaturesReady(updateID C.SRxUpdateID, data *C.BGPSecCallbackData, userPtr unsafe.Pointer) {
 	log.Info("signature callback from srx proxy")
-}*/
+}
 
-//export SyncEasyCallback
-func SyncEasyCallback() {
+//export Go_SyncNotification
+func Go_SyncNotification(userPtr unsafe.Pointer) {
 	log.Info("Sync callback from srx proxy")
 }
 
-//export SrxCommEasyCallback
-func SrxCommEasyCallback() {
+//export Go_SrxCommManagement
+func Go_SrxCommManagement(code C.SRxProxyCommCode, subCode C.int, userPtr unsafe.Pointer) {
 	log.Info("SrxComm callback from srx proxy")
 }
 
@@ -222,7 +208,8 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("Creating New ASPA Manager. AS:")
 	log.Info(as)
 	log.Info("AS would be used for Proxy Creation. Manually forcing differnt ASN")
-	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.SyncEasyCallback), C.closure(C.SyncEasyCallback), C.closure(C.SrxCommEasyCallback), 1, C.uint(65001), nil)
+	//C.closure(C.Go_signaturesReady)
+	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
 	log.Info("Created Proxy:")
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
@@ -252,7 +239,7 @@ func (g *IPAddress) Pack(out unsafe.Pointer) {
 	}
 }
 
-func ConvertIP(ipv4 string) C.IPv4Address {
+/*func ConvertIP(ipv4 string) C.IPv4Address {
 	var result C.IPv4Address
 
 	IPv4Int := big.NewInt(0)
@@ -271,4 +258,4 @@ func ConvertIP(ipv4 string) C.IPv4Address {
 	result[2] = buf.Bytes()[2]
 	result[3] = buf.Bytes()[3]
 	return result
-}
+}*/
