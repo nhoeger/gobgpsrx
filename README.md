@@ -1,5 +1,3 @@
-Nils 
-
 # NIST GoBGPsec 
 GoBGPsec uses NIST SRxCrypto library to facilitate crypto calculations
 which is able to sign and verify X.509 objects for BGPSec path validation. 
