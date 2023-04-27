@@ -26,6 +26,7 @@ bool processPackets(SRxProxy* proxy);
 extern bool Go_ValidationReady(SRxUpdateID updateID,uint32_t localID, ValidationResultType valType, uint8_t roaResult, uint8_t bgpsecResult, uint8_t aspaResult, void* userPtr);
 extern void Go_SignaturesReady(SRxUpdateID updId,BGPSecCallbackData* data, void* userPtr);
 extern void Go_SyncNotification(void* userPtr);
+extern void testpointer();
 extern void Go_SrxCommManagement(SRxProxyCommCode code, int subCode, void* userPtr);
 typedef void (*closure)();*/
 import "C"
@@ -47,7 +48,7 @@ import (
 )
 
 type IPv4Address [4]uint8
-
+type ASSEGMENT C.ASSEGMENT
 type IPv6Address [16]uint8
 
 type IPAddress struct {
@@ -82,6 +83,7 @@ func Go_SignaturesReady(updateID C.SRxUpdateID, data *C.BGPSecCallbackData, user
 //export Go_SyncNotification
 func Go_SyncNotification(userPtr unsafe.Pointer) {
 	log.Info("Sync callback from srx proxy")
+	log.Info(userPtr)
 }
 
 //export Go_SrxCommManagement
@@ -150,26 +152,78 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	pxip := prefix_addr
 	copy(px.V4[:], pxip)
 	px.Pack(unsafe.Pointer(prefix))
+	px.V4[0] = px.V4[12]
+	px.V4[1] = px.V4[13]
+	px.V4[2] = px.V4[14]
 	px.V4[11] = 0
 	px.V4[10] = 0
+	px.V4[12] = 0
+	px.V4[13] = 0
+	px.V4[14] = 0
 
 	prefix.ip.addr = [16]byte(px.V4)
 	prefix.ip.version = C.uint8_t(px.Version)
 	prefix.length = C.uint8_t(prefix_len)
 
 	// Preparing the asPathList
+	assegments := []ASSEGMENT{
+		{asn: 65004},
+	}
+	//log.Info("length of assegments:")
+	//log.Info(len(assegments))
+	//cArray := (*C.ASSEGMENT)(C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT))
+	//cArray = assegments
+	//log.Info(cArray)
+	//log.Info()
+
+	/*for i, seg := range assegments {
+		log.Info("Iterating...")
+		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
+		*ptr = C.ASSEGMENT(seg)
+	}*/
+	// allocate memory for the C array of ASSEGMENTs
+	cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
+	ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
+
+	log.Info(cArray)
+	log.Info((*C.ASSEGMENT)(cArray))
+	// copy the Go ASSEGMENTs to the C array
+	for i, seg := range assegments {
+		log.Info("Iterating")
+		log.Info(i)
+		log.Info(seg)
+		ptr = (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
+		*ptr = C.ASSEGMENT(seg)
+	}
+	log.Info(cArray)
+	log.Info((*C.ASSEGMENT)(cArray))
+
+	pathList := C.SRxASPathList{
+		length:         C.uchar(len(assegments)),
+		segments:       (*C.ASSEGMENT)(cArray),
+		asType:         2,
+		asRelationship: 1,
+	}
+	log.Info("PathList:")
+	log.Info(pathList.length)
+	log.Info(pathList.segments)
+	log.Info(pathList.segments.asn)
+	log.Info(pathList.asType)
+	log.Info(pathList.asRelationship)
+
 	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
 	var asPathList C.SRxASPathList
 	working_path := e.PathList
-	var testing_1 C.ASSEGMENT
+	testing_1 := (*C.ASSEGMENT)(C.malloc(C.sizeof_ASSEGMENT))
 	testing_1.asn = C.uint(as_int)
 	asPathList.length = C.uchar((len(working_path)))
-	asPathList.segments = &testing_1
+	asPathList.segments = testing_1
 	asPathList.asType = 2
 	asPathList.asRelationship = 1
 
 	// Preparing BGPSec data
 	go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
+	//go_bgpsec = nil
 	var number1 C.uchar = 1
 	var number2 C.uint = 1
 	go_bgpsec.numberHops = 1
@@ -186,15 +240,23 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	log.Info(prefix.ip.addr)
 	log.Info(prefix.ip.version)
 	log.Info(prefix.length)
+	log.Info("-+-+-+")
+	log.Info("Relationship")
 	log.Info(asPathList.asRelationship)
+	log.Info("ASType")
 	log.Info(asPathList.asType)
+	log.Info("ASN")
 	log.Info(asPathList.segments.asn)
-	C.verifyUpdate(proxy, C.uint(update_id), true, true, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
-
+	log.Info("Length")
+	log.Info(asPathList.length)
+	log.Info("Segments")
+	log.Info(asPathList.segments)
+	C.verifyUpdate(proxy, C.uint(update_id), true, true, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, pathList)
+	//C.free(cArray)
 	//C.free(unsafe.Pointer(proxy))
-	C.free(unsafe.Pointer(defaultResult))
-	C.free(unsafe.Pointer(prefix))
-	C.free(unsafe.Pointer(go_bgpsec))
+	//C.free(unsafe.Pointer(defaultResult))
+	//C.free(unsafe.Pointer(prefix))
+	//C.free(unsafe.Pointer(go_bgpsec))
 	log.Info("+---------------------------------------------------------+")
 	//C.free(unsafe.Pointer(asPathList))
 	//log.Info("Trying new things")
@@ -209,6 +271,7 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info(as)
 	log.Info("AS would be used for Proxy Creation. Manually forcing differnt ASN")
 	//C.closure(C.Go_signaturesReady)
+	//function := (*C.ValidationReady)(C.malloc(sizeof_Go_ValidationReady))
 	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
 	log.Info("Created Proxy:")
 	srx_server_ip := C.CString("172.17.0.3")
@@ -223,6 +286,7 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 		ConnectionStatus: bool(connectionStatus),
 	}
 
+	log.Info("|----------------------------------------------------|")
 	return am, nil
 }
 
