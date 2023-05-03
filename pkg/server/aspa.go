@@ -66,6 +66,7 @@ type PathList struct {
 type aspaManager struct {
 	AS               uint32
 	Proxy            C.SRxProxy
+	ID				 uint32
 }
 
 //export Go_ValidationReady
@@ -104,8 +105,11 @@ func (am *aspaManager) SetAS(as uint32) error {
 
 func (am *aspaManager) validate(e *fsmMsg) {
 	log.Info("+---------------------------------------+")
+	log.Info("Connection Status:")
+	log.Info(C.isConnected(&am.Proxy))
+
 	// extracting the propagated prefix
-	update_id := rand.Intn(100)
+	update_id := am.ID
 	prefix_len := 0
 	prefix_addr := net.ParseIP("0.0.0.0")
 	for _, path := range e.PathList {
@@ -121,8 +125,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 			}
 		}
 	}
-	log.Info("Connection Status")
-	log.Info(C.isConnected(&am.Proxy))
 
 	// Preparing the proxy
 	proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
@@ -272,6 +274,7 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	am := &aspaManager{
 		AS:               as,
 		Proxy:            *go_proxy,
+		ID:				  0,
 	}
 	log.Info("Done")
 	log.Info("+---------------------------------------+")
