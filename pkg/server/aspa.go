@@ -170,19 +170,17 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	// Preparing the asPathList
 	assegments := []ASSEGMENT{
 		{asn: 65004},
+		{asn: 65005},
 	}
-	//log.Info("length of assegments:")
-	//log.Info(len(assegments))
-	//cArray := (*C.ASSEGMENT)(C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT))
+	
+	cArray := (*C.ASSEGMENT)(C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT))
 	//cArray = assegments
-	//log.Info(cArray)
-	//log.Info()
 
-	/*for i, seg := range assegments {
+	for i, seg := range assegments {
 		log.Info("Iterating...")
 		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
 		*ptr = C.ASSEGMENT(seg)
-	}*/
+	}
 	// allocate memory for the C array of ASSEGMENTs
 	cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
 	ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
