@@ -168,7 +168,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	prefix.length = C.uint8_t(prefix_len)
 
 	// Preparing the asPathList
-	assegments := []ASSEGMENT{
+	/*assegments := []ASSEGMENT{
 		{asn: 65004},
 		{asn: 65005},
 	}
@@ -180,7 +180,18 @@ func (am *aspaManager) validate(e *fsmMsg) {
 		log.Info("Iterating...")
 		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
 		*ptr = C.ASSEGMENT(seg)
-	}
+	}*/
+	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
+	var asPathList C.SRxASPathList
+	working_path := e.PathList
+	var testing_1 C.ASSEGMENT
+	testing_1.asn = C.uint(as_int)
+	asPathList.length = C.uchar((len(working_path)))
+	asPathList.segments = &testing_1
+	asPathList.asType = 2
+	asPathList.asRelationship = 1
+
+
 	// allocate memory for the C array of ASSEGMENTs
 	cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
 	ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
