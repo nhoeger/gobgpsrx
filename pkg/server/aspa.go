@@ -65,7 +65,6 @@ type PathList struct {
 
 type aspaManager struct {
 	AS               uint32
-	ConnectionStatus bool
 	Proxy            C.SRxProxy
 }
 
@@ -92,18 +91,19 @@ func Go_SrxCommManagement(code C.SRxProxyCommCode, subCode C.int, userPtr unsafe
 }
 
 func (am *aspaManager) SetAS(as uint32) error {
-	log.Info("Changing ASPA AS to:")
+	log.Info("+---------------------------------------+")
+	log.Info("Changing ASPA Manager AS to:")
 	log.Info(as)
 	if am.AS != 0 {
 		return fmt.Errorf("AS was already configured")
 	}
 	am.AS = as
-	//am.Proxy = nil
+	log.Info("+---------------------------------------+")
 	return nil
 }
 
 func (am *aspaManager) validate(e *fsmMsg) {
-	log.Info("+---------------------------------------------------------+")
+	log.Info("+---------------------------------------+")
 	// extracting the propagated prefix
 	update_id := rand.Intn(100)
 	prefix_len := 0
@@ -257,36 +257,24 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	//C.free(unsafe.Pointer(defaultResult))
 	//C.free(unsafe.Pointer(prefix))
 	//C.free(unsafe.Pointer(go_bgpsec))
-	log.Info("+---------------------------------------------------------+")
+	log.Info("+---------------------------------------+")
 	//C.free(unsafe.Pointer(asPathList))
 	//log.Info("Trying new things")
 	//tt := C.processPackets(proxy)
 }
 
-//type ValidationReady func(updateID SRxUpdateID, localID uint32, valType ValidationResultType, roaResult uint8, bgpsecResult uint8, aspaResult uint8, userPtr unsafe.Pointer) bool
-
 func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("+---------------------------------------+")
-	log.Info("Creating New ASPA Manager. AS:")
-	log.Info(as)
-	log.Info("AS would be used for Proxy Creation. Manually forcing differnt ASN")
-	//C.closure(C.Go_signaturesReady)
-	//function := (*C.ValidationReady)(C.malloc(sizeof_Go_ValidationReady))
+	log.Info("Creating New ASPA Manager")
+	go_proxy = (*C.SRxProxy)(C.malloc(sizeof_SRxProxy))
 	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
-	log.Info("Created Proxy:")
-	srx_server_ip := C.CString("172.17.0.3")
-	srx_server_port := C.int(17900)
-	handshakeTimeout := C.int(100)
-	connectionStatus := C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
-	log.Info("Connection Status:")
-	log.Info(connectionStatus)
+	log.Info("Created Proxy")
 	am := &aspaManager{
 		AS:               as,
 		Proxy:            *go_proxy,
-		ConnectionStatus: bool(connectionStatus),
 	}
-
-	log.Info("|----------------------------------------------------|")
+	log.Info("Done")
+	log.Info("+---------------------------------------+")
 	return am, nil
 }
 
