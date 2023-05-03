@@ -35,7 +35,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -64,9 +63,9 @@ type PathList struct {
 }
 
 type aspaManager struct {
-	AS               uint32
-	Proxy            C.SRxProxy
-	ID				 uint32
+	AS    uint32
+	Proxy C.SRxProxy
+	ID    uint32
 }
 
 //export Go_ValidationReady
@@ -110,6 +109,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 
 	// extracting the propagated prefix
 	update_id := am.ID
+	am.ID++
 	prefix_len := 0
 	prefix_addr := net.ParseIP("0.0.0.0")
 	for _, path := range e.PathList {
@@ -253,7 +253,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	log.Info(asPathList.length)
 	log.Info("Segments")
 	log.Info(asPathList.segments)
-	C.verifyUpdate(proxy, C.uint(update_id), true, true, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, pathList)
+	C.verifyUpdate(proxy, C.uint(update_id), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, pathList)
 	//C.free(cArray)
 	//C.free(unsafe.Pointer(proxy))
 	//C.free(unsafe.Pointer(defaultResult))
@@ -268,13 +268,13 @@ func (am *aspaManager) validate(e *fsmMsg) {
 func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("+---------------------------------------+")
 	log.Info("Creating New ASPA Manager")
-	go_proxy = (*C.SRxProxy)(C.malloc(sizeof_SRxProxy))
-	go_proxy := C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
+	go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
+	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
 	log.Info("Created Proxy")
 	am := &aspaManager{
-		AS:               as,
-		Proxy:            *go_proxy,
-		ID:				  0,
+		AS:    as,
+		Proxy: *go_proxy,
+		ID:    0,
 	}
 	log.Info("Done")
 	log.Info("+---------------------------------------+")
@@ -282,35 +282,12 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 }
 
 func (g *IPAddress) Pack(out unsafe.Pointer) {
-
 	buf := &bytes.Buffer{}
 	binary.Write(buf, binary.BigEndian, g)
 	l := buf.Len()
 	o := (*[1 << 20]C.uchar)(out)
-
 	for i := 0; i < l; i++ {
 		b, _ := buf.ReadByte()
 		o[i] = C.uchar(b)
 	}
 }
-
-/*func ConvertIP(ipv4 string) C.IPv4Address {
-	var result C.IPv4Address
-
-	IPv4Int := big.NewInt(0)
-	IPv4Int.SetBytes((net.ParseIP(ipv4)).To4())
-
-	ipv4Decimal := IPv4Int.Int64()
-
-	buf := new(bytes.Buffer)
-	err := binary.Write(buf, binary.BigEndian, uint32(ipv4Decimal))
-
-	if err != nil {
-		fmt.Println("Unable to write to buffer:", err)
-	}
-	result[0] = buf.Bytes()[0]
-	result[1] = buf.Bytes()[1]
-	result[2] = buf.Bytes()[2]
-	result[3] = buf.Bytes()[3]
-	return result
-}*/
