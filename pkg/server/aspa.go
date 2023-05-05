@@ -38,6 +38,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
@@ -278,18 +279,19 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("+---------------------------------------+")
 	log.Info("Creating New ASPA Manager")
 	go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
-	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
+	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 0, C.uint(65001), nil)
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
 	handshakeTimeout := C.int(100)
-	connectionStatus := C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
-	log.Info(connectionStatus)
+	C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, false)
+	//log.Info(connectionStatus)
 	log.Info("Created Proxy")
 	am := &aspaManager{
 		AS:    as,
 		Proxy: *go_proxy,
 		ID:    0,
 	}
+	time.Sleep(1)
 	log.Info(C.isConnected(&am.Proxy))
 	log.Info("Done")
 	log.Info("+---------------------------------------+")
