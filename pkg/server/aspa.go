@@ -172,7 +172,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 		{asn: 65004},
 		{asn: 65005},
 	}
-	
+
 	cArray := (*C.ASSEGMENT)(C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT))
 	//cArray = assegments
 
@@ -190,47 +190,47 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	asPathList.segments = &testing_1
 	asPathList.asType = 2
 	asPathList.asRelationship = 1
+	/*
 
+		// allocate memory for the C array of ASSEGMENTs
+		cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
+		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
 
-	// allocate memory for the C array of ASSEGMENTs
-	cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
-	ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
+		log.Info(cArray)
+		log.Info((*C.ASSEGMENT)(cArray))
+		// copy the Go ASSEGMENTs to the C array
+		for i, seg := range assegments {
+			log.Info("Iterating")
+			log.Info(i)
+			log.Info(seg)
+			ptr = (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
+			*ptr = C.ASSEGMENT(seg)
+		}
+		log.Info(cArray)
+		log.Info((*C.ASSEGMENT)(cArray))
 
-	log.Info(cArray)
-	log.Info((*C.ASSEGMENT)(cArray))
-	// copy the Go ASSEGMENTs to the C array
-	for i, seg := range assegments {
-		log.Info("Iterating")
-		log.Info(i)
-		log.Info(seg)
-		ptr = (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
-		*ptr = C.ASSEGMENT(seg)
-	}
-	log.Info(cArray)
-	log.Info((*C.ASSEGMENT)(cArray))
+		pathList := C.SRxASPathList{
+			length:         C.uchar(len(assegments)),
+			segments:       (*C.ASSEGMENT)(cArray),
+			asType:         2,
+			asRelationship: 1,
+		}
+		log.Info("PathList:")
+		log.Info(pathList.length)
+		log.Info(pathList.segments)
+		log.Info(pathList.segments.asn)
+		log.Info(pathList.asType)
+		log.Info(pathList.asRelationship)
 
-	pathList := C.SRxASPathList{
-		length:         C.uchar(len(assegments)),
-		segments:       (*C.ASSEGMENT)(cArray),
-		asType:         2,
-		asRelationship: 1,
-	}
-	log.Info("PathList:")
-	log.Info(pathList.length)
-	log.Info(pathList.segments)
-	log.Info(pathList.segments.asn)
-	log.Info(pathList.asType)
-	log.Info(pathList.asRelationship)
-
-	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
-	var asPathList C.SRxASPathList
-	working_path := e.PathList
-	testing_1 := (*C.ASSEGMENT)(C.malloc(C.sizeof_ASSEGMENT))
-	testing_1.asn = C.uint(as_int)
-	asPathList.length = C.uchar((len(working_path)))
-	asPathList.segments = testing_1
-	asPathList.asType = 2
-	asPathList.asRelationship = 1
+		as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
+		var asPathList C.SRxASPathList
+		working_path := e.PathList
+		testing_1 := (*C.ASSEGMENT)(C.malloc(C.sizeof_ASSEGMENT))
+		testing_1.asn = C.uint(as_int)
+		asPathList.length = C.uchar((len(working_path)))
+		asPathList.segments = testing_1
+		asPathList.asType = 2
+		asPathList.asRelationship = 1*/
 
 	// Preparing BGPSec data
 	go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
@@ -262,7 +262,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	log.Info(asPathList.length)
 	log.Info("Segments")
 	log.Info(asPathList.segments)
-	C.verifyUpdate(proxy, C.uint(update_id), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, pathList)
+	C.verifyUpdate(proxy, C.uint(update_id), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
 	//C.free(cArray)
 	//C.free(unsafe.Pointer(proxy))
 	//C.free(unsafe.Pointer(defaultResult))
@@ -279,12 +279,18 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	log.Info("Creating New ASPA Manager")
 	go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
 	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 1, C.uint(65001), nil)
+	srx_server_ip := C.CString("172.17.0.3")
+	srx_server_port := C.int(17900)
+	handshakeTimeout := C.int(100)
+	connectionStatus := C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
+	log.Info(connectionStatus)
 	log.Info("Created Proxy")
 	am := &aspaManager{
 		AS:    as,
 		Proxy: *go_proxy,
 		ID:    0,
 	}
+	log.Info(C.isConnected(&am.Proxy))
 	log.Info("Done")
 	log.Info("+---------------------------------------+")
 	return am, nil
