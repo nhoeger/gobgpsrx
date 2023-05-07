@@ -274,14 +274,11 @@ func NewASPAManager(as uint32) (*aspaManager, error) {
 	srx_server_port := C.int(17900)
 	handshakeTimeout := C.int(100)
 	C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
-	tmp := make([]srx_update, 0)
-	log.Info(tmp)
-	tmp = append(make([]srx_update, 0), NewSrxUpdate(0))
 	am := &aspaManager{
 		AS:      int(as),
 		Proxy:   *go_proxy,
 		ID:      0,
-		Updates: append(make([]srx_update, 0), NewSrxUpdate(0)),
+		Updates: make([]srx_update, 0),
 	}
 	return am, nil
 }
