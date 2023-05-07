@@ -38,7 +38,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
 	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
@@ -64,9 +63,10 @@ type PathList struct {
 }
 
 type aspaManager struct {
-	AS    uint32
-	Proxy C.SRxProxy
-	ID    uint32
+	AS      int
+	Proxy   C.SRxProxy
+	ID      int
+	Updates []srx_update
 }
 
 //export Go_ValidationReady
@@ -92,25 +92,25 @@ func Go_SrxCommManagement(code C.SRxProxyCommCode, subCode C.int, userPtr unsafe
 }
 
 func (am *aspaManager) SetAS(as uint32) error {
-	log.Info("+---------------------------------------+")
-	log.Info("Changing ASPA Manager AS to:")
-	log.Info(as)
+	log.WithFields(log.Fields{
+		"new ASN": as,
+		"old ASN": am.AS,
+	}).Debug("Changing ASPA Manager ASN")
 	if am.AS != 0 {
 		return fmt.Errorf("AS was already configured")
 	}
-	am.AS = as
-	log.Info("+---------------------------------------+")
+	am.AS = int(as)
 	return nil
 }
 
 func (am *aspaManager) validate(e *fsmMsg) {
+	// start validation
 	log.Info("+---------------------------------------+")
-	log.Info("Connection Status:")
-	log.Info(C.isConnected(&am.Proxy))
+	log.WithFields(log.Fields{
+		"connection to server": C.isConnected(&am.Proxy),
+	}).Debug("Starting validation procedure:")
 
 	// extracting the propagated prefix
-	update_id := am.ID
-	am.ID++
 	prefix_len := 0
 	prefix_addr := net.ParseIP("0.0.0.0")
 	for _, path := range e.PathList {
@@ -126,10 +126,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 			}
 		}
 	}
-
-	// Preparing the proxy
-	proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
-	proxy = &am.Proxy
 
 	// Preparing the defaultResult
 	defaultResult := (*C.SRxDefaultResult)(C.malloc(C.sizeof_SRxDefaultResult))
@@ -182,6 +178,7 @@ func (am *aspaManager) validate(e *fsmMsg) {
 		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
 		*ptr = C.ASSEGMENT(seg)
 	}*/
+
 	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
 	var asPathList C.SRxASPathList
 	working_path := e.PathList
@@ -235,7 +232,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 
 	// Preparing BGPSec data
 	go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
-	//go_bgpsec = nil
 	var number1 C.uchar = 1
 	var number2 C.uint = 1
 	go_bgpsec.numberHops = 1
@@ -247,8 +243,6 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	go_bgpsec.local_as = 1
 	go_bgpsec.bgpsec_path_attr = &number1
 
-	log.Info(proxy.proxyAS)
-	log.Info(update_id)
 	log.Info(prefix.ip.addr)
 	log.Info(prefix.ip.version)
 	log.Info(prefix.length)
@@ -263,38 +257,32 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	log.Info(asPathList.length)
 	log.Info("Segments")
 	log.Info(asPathList.segments)
-	C.verifyUpdate(proxy, C.uint(update_id), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
-	//C.free(cArray)
-	//C.free(unsafe.Pointer(proxy))
-	//C.free(unsafe.Pointer(defaultResult))
-	//C.free(unsafe.Pointer(prefix))
-	//C.free(unsafe.Pointer(go_bgpsec))
+	C.verifyUpdate(&am.Proxy, C.uint(am.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
+	update_test := NewSrxUpdate(am.ID)
+	am.ID++
+	am.Updates = append(am.Updates, update_test)
+	C.free(unsafe.Pointer(defaultResult))
+	C.free(unsafe.Pointer(prefix))
+	C.free(unsafe.Pointer(go_bgpsec))
 	log.Info("+---------------------------------------+")
-	//C.free(unsafe.Pointer(asPathList))
-	//log.Info("Trying new things")
-	//tt := C.processPackets(proxy)
 }
 
 func NewASPAManager(as uint32) (*aspaManager, error) {
-	log.Info("+---------------------------------------+")
-	log.Info("Creating New ASPA Manager")
 	go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
-	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 0, C.uint(65001), nil)
+	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
 	handshakeTimeout := C.int(100)
-	C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, false)
-	//log.Info(connectionStatus)
-	log.Info("Created Proxy")
+	C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
+	tmp := make([]srx_update, 0)
+	log.Info(tmp)
+	tmp = append(make([]srx_update, 0), NewSrxUpdate(0))
 	am := &aspaManager{
-		AS:    as,
-		Proxy: *go_proxy,
-		ID:    0,
+		AS:      int(as),
+		Proxy:   *go_proxy,
+		ID:      0,
+		Updates: append(make([]srx_update, 0), NewSrxUpdate(0)),
 	}
-	time.Sleep(1)
-	log.Info(C.isConnected(&am.Proxy))
-	log.Info("Done")
-	log.Info("+---------------------------------------+")
 	return am, nil
 }
 
