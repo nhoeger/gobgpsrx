@@ -62,7 +62,7 @@ type PathList struct {
 	asRelationship C.AS_REL_TYPE
 }
 
-type aspaManager struct {
+type rpkiManager struct {
 	AS      int
 	Proxy   C.SRxProxy
 	ID      int
@@ -91,23 +91,23 @@ func Go_SrxCommManagement(code C.SRxProxyCommCode, subCode C.int, userPtr unsafe
 	log.Info("SrxComm callback from srx proxy")
 }
 
-func (am *aspaManager) SetAS(as uint32) error {
+func (rm *rpkiManager) SetAS(as uint32) error {
 	log.WithFields(log.Fields{
 		"new ASN": as,
-		"old ASN": am.AS,
+		"old ASN": rm.AS,
 	}).Debug("Changing ASPA Manager ASN")
-	if am.AS != 0 {
+	if rm.AS != 0 {
 		return fmt.Errorf("AS was already configured")
 	}
-	am.AS = int(as)
+	rm.AS = int(as)
 	return nil
 }
 
-func (am *aspaManager) validate(e *fsmMsg) {
+func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 	// start validation
 	log.Info("+---------------------------------------+")
 	log.WithFields(log.Fields{
-		"connection to server": C.isConnected(&am.Proxy),
+		"connection to server": C.isConnected(&rm.Proxy),
 	}).Debug("Starting validation procedure:")
 
 	// extracting the propagated prefix
@@ -257,30 +257,38 @@ func (am *aspaManager) validate(e *fsmMsg) {
 	log.Info(asPathList.length)
 	log.Info("Segments")
 	log.Info(asPathList.segments)
-	C.verifyUpdate(&am.Proxy, C.uint(am.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
-	update_test := NewSrxUpdate(am.ID)
-	am.ID++
-	am.Updates = append(am.Updates, update_test)
+
+	if aspa {
+		C.verifyUpdate(&rm.Proxy, C.uint(rm.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
+	}
+
+	/*if ascones {
+		C.verifyUpdate(&rm.Proxy, C.uint(rm.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
+	}*/
+
+	update_test := NewSrxUpdate(rm.ID)
+	rm.ID++
+	rm.Updates = append(rm.Updates, update_test)
 	C.free(unsafe.Pointer(defaultResult))
 	C.free(unsafe.Pointer(prefix))
 	C.free(unsafe.Pointer(go_bgpsec))
 	log.Info("+---------------------------------------+")
 }
 
-func NewASPAManager(as uint32) (*aspaManager, error) {
+func NewRPKIManager(as uint32) (*rpkiManager, error) {
 	go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
 	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
 	srx_server_ip := C.CString("172.17.0.3")
 	srx_server_port := C.int(17900)
 	handshakeTimeout := C.int(100)
 	C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
-	am := &aspaManager{
+	rm := &rpkiManager{
 		AS:      int(as),
 		Proxy:   *go_proxy,
 		ID:      0,
 		Updates: make([]srx_update, 0),
 	}
-	return am, nil
+	return rm, nil
 }
 
 func (g *IPAddress) Pack(out unsafe.Pointer) {

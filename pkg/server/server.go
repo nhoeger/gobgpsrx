@@ -139,7 +139,7 @@ type BgpServer struct {
 	roaTable      *table.ROATable
 	uuidMap       map[string]uuid.UUID
 	bgpsecManager *bgpsecManager
-	aspaManager   *aspaManager
+	rpkiManager   *rpkiManager
 }
 
 func NewBgpServer(opt ...ServerOption) *BgpServer {
@@ -149,7 +149,7 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 	}
 	roaTable := table.NewROATable()
 	bgpsecManager, _ := NewBgpsecManager(0)
-	aspaManager, _ := NewASPAManager(0)
+	rpkiManager, _ := NewRPKIManager(0)
 	s := &BgpServer{
 		neighborMap:   make(map[string]*peer),
 		peerGroupMap:  make(map[string]*peerGroup),
@@ -160,7 +160,7 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 		roaManager:    newROAManager(roaTable),
 		roaTable:      roaTable,
 		bgpsecManager: bgpsecManager,
-		aspaManager:   aspaManager,
+		rpkiManager:   rpkiManager,
 	}
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
@@ -1601,7 +1601,8 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			s.aspaManager.validate(e)
+			s.rpkiManager.validate(e, true, false)
+			//s.rpkiManager.validate(e,false,true)
 			if peer.fsm.pConf.Config.ASPAEnable {
 				log.WithFields(log.Fields{
 					"Topic": "Server",
@@ -2183,7 +2184,7 @@ func (s *BgpServer) StartBgp(ctx context.Context, r *api.StartBgpRequest) error 
 		// update route selection options
 		table.SelectionOptions = c.RouteSelectionOptions.Config
 		table.UseMultiplePaths = c.UseMultiplePaths.Config
-		s.aspaManager.SetAS(s.bgpConfig.Global.Config.As)
+		s.rpkiManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetKeyPath(s.bgpConfig.Global.Config.KeyPath)
 		s.bgpsecManager.BgpsecInit(s.bgpConfig.Global.Config.KeyPath)
