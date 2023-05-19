@@ -1,42 +1,8 @@
 package server
 
-/*
-#cgo CFLAGS: -I/opt/project/srx_test1/_inst/include/srx
-#cgo LDFLAGS: -L/home/centos/Master/NIST-BGP-SRx/local-6.2.0/lib64/srx -lSRxProxy
-#include <stdio.h>
-#include <stdlib.h>
-#include "/home/centos/Master/NIST-BGP-SRx/srx-server/src/client/srx_api.h"
-#include "/usr/include/netinet/in.h"
-SRxProxy* createSRxProxy(ValidationReady   validationReadyCallback,
-                         SignaturesReady   signatureReadyCallback,
-                         SyncNotification  requestSynchronizationCallback,
-                         SrxCommManagement communicationMgmtCallback,
-                         uint32_t proxyID, uint32_t proxyAS, void* userPtr);
-bool connectToSRx(SRxProxy* proxy, const char* host, int port,
-                  int handshakeTimeout, bool externalSocketControl);
-void verifyUpdate(SRxProxy* proxy, uint32_t localID,
-                  bool usePrefixOriginVal, bool usePathVal, bool useAspaVal,
-                  SRxDefaultResult* defaultResult,
-                  IPPrefix* prefix, uint32_t as32,
-                  BGPSecData* bgpsec, SRxASPathList asPathList);
-bool isConnected(SRxProxy* proxy);
-void setProxyLogger(ProxyLogger logger);
-bool disconnectFromSRx(SRxProxy* proxy, uint16_t keepWindow);
-bool processPackets(SRxProxy* proxy);
-extern bool Go_ValidationReady(SRxUpdateID updateID,uint32_t localID, ValidationResultType valType, uint8_t roaResult, uint8_t bgpsecResult, uint8_t aspaResult, void* userPtr);
-extern void Go_SignaturesReady(SRxUpdateID updId,BGPSecCallbackData* data, void* userPtr);
-extern void Go_SyncNotification(void* userPtr);
-extern void testpointer();
-extern void Go_SrxCommManagement(SRxProxyCommCode code, int subCode, void* userPtr);
-typedef void (*closure)();*/
-import "C"
-
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"sync"
-	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
 	_ "os"
@@ -45,19 +11,11 @@ import (
 )
 
 type IPv4Address [4]uint8
-type ASSEGMENT C.ASSEGMENT
 type IPv6Address [16]uint8
 
 type IPAddress struct {
 	Version uint8
 	V4      [16]uint8
-}
-
-type PathList struct {
-	length         uint8
-	segments       C.ASSEGMENT
-	asType         C.AS_TYPE
-	asRelationship C.AS_REL_TYPE
 }
 
 type rpkiManager struct {
@@ -67,26 +25,11 @@ type rpkiManager struct {
 	Updates []srx_update
 }
 
-//export Go_ValidationReady
-func Go_ValidationReady(updateID C.SRxUpdateID, localID C.uint32_t, valType C.ValidationResultType, roaResult C.uint8_t, bgpsecResult C.uint8_t, aspaResult C.uint8_t, userPtr unsafe.Pointer) C.bool {
-	log.Info("Called Go_ValidationReady")
-	return C.bool(false)
-}
+func handleVerifyNotify(input string) {
+	fmt.Println("Handling verify notify")
+	fmt.Println("Result Type: ", input[2:4])
+	fmt.Println("Result: ", input[8:10])
 
-//export Go_SignaturesReady
-func Go_SignaturesReady(updateID C.SRxUpdateID, data *C.BGPSecCallbackData, userPtr unsafe.Pointer) {
-	log.Info("signature callback from srx proxy")
-}
-
-//export Go_SyncNotification
-func Go_SyncNotification(userPtr unsafe.Pointer) {
-	log.Info("Sync callback from srx proxy")
-	log.Info(userPtr)
-}
-
-//export Go_SrxCommManagement
-func Go_SrxCommManagement(code C.SRxProxyCommCode, subCode C.int, userPtr unsafe.Pointer) {
-	log.Info("SrxComm callback from srx proxy")
 }
 
 func (rm *rpkiManager) SetAS(as uint32) error {
@@ -276,10 +219,6 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 		log.Info("+---------------------------------------+")*/
 }
 
-type Result struct {
-	userPtr unsafe.Pointer
-}
-
 func NewRPKIManager(as uint32) (*rpkiManager, error) {
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -292,65 +231,11 @@ func NewRPKIManager(as uint32) (*rpkiManager, error) {
 	sendHello(pr)
 	go proxyBackgroundThread(pr.con, &wg)
 
-	//proxy := createSRxProxy()
 	rm := &rpkiManager{
 		AS:      int(as),
 		Proxy:   pr,
 		ID:      0,
 		Updates: make([]srx_update, 0),
 	}
-
-	/*
-
-		runtime.GOMAXPROCS(100)
-		runtime.LockOSThread()
-		callbackChan := make(chan Result)
-		var wg sync.WaitGroup
-		var go_proxy *C.SRxProxy
-		wg.Add(1)
-
-		go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
-		go proxyBackgroundThread(*go_proxy, &wg, callbackChan)
-		//go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
-		//go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
-		srx_server_ip := C.CString("172.17.0.3")
-		srx_server_port := C.int(17900)
-		handshakeTimeout := C.int(100)
-		C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
-		wg.Wait()
-		rm := &rpkiManager{
-			AS:      int(as),
-			Proxy:   *go_proxy,
-			ID:      0,
-			Updates: make([]srx_update, 0),
-		}*/
 	return rm, nil
-}
-
-/*func proxyBackgroundThread(proxy C.SRxProxy, wg *sync.WaitGroup, callbackChan <-chan Result) {
-//runtime.LockOSThread()
-defer wg.Done()
-C.connectToSRx(&proxy, C.CString("172.17.0.3"), 17900, 100, false)
-/*for {
-	select {
-	case Result := <-callbackChan:
-		fmt.Println("Callback ausgeführt,Ergebnis:", Result)
-		time.Sleep(1 * time.Second)
-	default:
-		// Keine Callbacks oder Fehlermeldungen erhalten, weiterarbeiten oder auf Ereignisse warten
-		fmt.Println("Hintergrundthread arbeitet...")
-		time.Sleep(1 * time.Second) // Beispiel: Warten für 1 Sekunde
-	}
-}*/
-//}
-
-func (g *IPAddress) Pack(out unsafe.Pointer) {
-	buf := &bytes.Buffer{}
-	binary.Write(buf, binary.BigEndian, g)
-	l := buf.Len()
-	o := (*[1 << 20]C.uchar)(out)
-	for i := 0; i < l; i++ {
-		b, _ := buf.ReadByte()
-		o[i] = C.uchar(b)
-	}
 }

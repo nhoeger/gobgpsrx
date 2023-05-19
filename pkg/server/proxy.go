@@ -66,9 +66,7 @@ func connectToSrxServer() net.Conn {
 }
 
 func sendHello(proxy Go_Proxy) {
-	proxy_id, err := hex.DecodeString(strconv.FormatInt(int64(proxy.ASN), 16))
-	bytes, err := hex.DecodeString("000003000000000000000014000000010000fde9")
-	bytes = append(bytes, proxy_id...)
+	bytes, err := hex.DecodeString("000003000000000000000014000000010000fde9" + strconv.FormatInt(int64(proxy.ASN), 16))
 	_, err = proxy.con.Write(bytes)
 	if err != nil {
 		log.Info(err)
@@ -89,7 +87,8 @@ func proxyBackgroundThread(con net.Conn, wg *sync.WaitGroup) {
 		}
 
 		if server_response[:2] == "06" {
-			log.Info("Could be a validation callback")
+			log.Info("Received Verify Notify")
+			handleVerifyNotify(server_response)
 		}
 		fmt.Println("Server:", server_response)
 	}
