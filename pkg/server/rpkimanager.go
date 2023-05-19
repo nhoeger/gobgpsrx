@@ -2,6 +2,9 @@ package server
 
 import (
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
 	"sync"
 
 	//_ "github.com/osrg/gobgp/table"
@@ -27,9 +30,13 @@ type rpkiManager struct {
 
 func handleVerifyNotify(input string) {
 	fmt.Println("Handling verify notify")
-	fmt.Println("Result Type: ", input[2:4])
-	fmt.Println("Result: ", input[8:10])
-
+	result_type := input[2:4]
+	result := input[8:10]
+	if result_type == "87" {
+		log.Info("Setting deault value for newest validation request.")
+	}
+	fmt.Println("Result Type: ", result_type)
+	fmt.Println("Result: ", result)
 }
 
 func (rm *rpkiManager) SetAS(as uint32) error {
@@ -45,13 +52,50 @@ func (rm *rpkiManager) SetAS(as uint32) error {
 }
 
 func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
+	output_string := "03"
+	flags := "00"
+	if aspa {
+		flags = "84"
+	} else {
+		flags = "00"
+	}
+	origin_result_source := "03"
+	path_result_source := "03"
+	aspa_result_source := "03"
+	reserved := "00"
+	as_path_type := "02"
+	as_relation_type := "01"
+	length := "00000044"
+	origin_default_result := "00"
+	path_default_result := "00"
+	aspa_default_result := "00"
+	preifx_length := "18"
+	request_token := "00000001"
+	ipv4_address := "07030700"
+	origin_as := "0000fdec"
+	length_path_val_data := "00000008"
+	num_of_hops := "0002"
+	bgpsec_length := "0000"
+	afi := "0000"
+	safi := "00"
+	pre_len := "00"
+	ip_pre_add_byte_a := "00000000"
+	ip_pre_add_byte_b := "00000000"
+	ip_pre_add_byte_c := "00000000"
+	ip_pre_add_byte_d := "00000000"
+	local_as := "00000000"
+	as_path_list := "00001dfc0000fded"
 	log.Info("Validation")
-	validate(rm.Proxy)
-	/*// start validation
-	log.Info("+---------------------------------------+")
-	log.WithFields(log.Fields{
-		"connection to server": C.isConnected(&rm.Proxy),
-	}).Debug("Starting validation procedure:")
+	log.Info("Message: ", e)
+
+	//log.Info("fsm: ", e.fsm)
+	//log.Info("payload: ", e.payload)
+	//log.Info("timestamp: ", e.timestamp)
+	//log.Info("MsgData: ", e.MsgData)
+	//log.Info("MsgSrc: ", e.MsgSrc)
+	//log.Info("PathList: ", e.PathList)
+
+	// start validation
 
 	// extracting the propagated prefix
 	prefix_len := 0
@@ -69,19 +113,9 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 			}
 		}
 	}
-
-	// Preparing the defaultResult
-	defaultResult := (*C.SRxDefaultResult)(C.malloc(C.sizeof_SRxDefaultResult))
-
-	var Res C.SRxResultSource = 3
-	var test C.SRxResult
-	test.roaResult = 0
-	test.bgpsecResult = 0
-	test.aspaResult = 0
-	defaultResult.resSourceROA = Res
-	defaultResult.resSourceBGPSEC = Res
-	defaultResult.resSourceASPA = Res
-	defaultResult.result = test
+	log.Debug("Prefix: ", prefix_addr, "/", prefix_len)
+	// IP-Adresse in Hex-Wert umwandeln
+	ipv4_address = fmt.Sprintf("%02x%02x%02x%02x", prefix_addr[0], prefix_addr[1], prefix_addr[2], prefix_addr[3])
 
 	// Preparing the Prefix
 	px := &IPAddress{
@@ -89,11 +123,8 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 		V4:      [16]byte{},
 	}
 
-	prefix := (*C.IPPrefix)(C.malloc(C.sizeof_IPPrefix))
-
 	pxip := prefix_addr
 	copy(px.V4[:], pxip)
-	px.Pack(unsafe.Pointer(prefix))
 	px.V4[0] = px.V4[12]
 	px.V4[1] = px.V4[13]
 	px.V4[2] = px.V4[14]
@@ -102,10 +133,6 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 	px.V4[12] = 0
 	px.V4[13] = 0
 	px.V4[14] = 0
-
-	prefix.ip.addr = [16]byte(px.V4)
-	prefix.ip.version = C.uint8_t(px.Version)
-	prefix.length = C.uint8_t(prefix_len)
 
 	// Preparing the asPathList
 	/*assegments := []ASSEGMENT{
@@ -217,6 +244,16 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 		C.free(unsafe.Pointer(prefix))
 		C.free(unsafe.Pointer(go_bgpsec))
 		log.Info("+---------------------------------------+")*/
+
+	output_string += flags + origin_result_source + path_result_source + aspa_result_source
+	output_string += reserved + as_path_type + as_relation_type + length + origin_default_result
+	output_string += path_default_result + aspa_default_result + preifx_length + request_token
+	output_string += ipv4_address + origin_as + length_path_val_data + num_of_hops + bgpsec_length
+	output_string += afi + safi + pre_len + ip_pre_add_byte_a + ip_pre_add_byte_b + ip_pre_add_byte_c
+	output_string += ip_pre_add_byte_d + local_as + as_path_list
+	log.Debug(output_string)
+
+	validate(rm.Proxy, output_string)
 }
 
 func NewRPKIManager(as uint32) (*rpkiManager, error) {

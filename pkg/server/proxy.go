@@ -18,6 +18,11 @@ const (
 	SyncMessage       = "004"
 )
 
+type Verification_Request struct {
+	PDU [1]byte
+	//TODO: extend
+}
+
 type Go_Proxy struct {
 	con        net.Conn
 	ASN        int
@@ -29,10 +34,10 @@ func CallbackForValidationResults(input string) {
 	fmt.Println(input)
 }
 
-func validate(proxy Go_Proxy) {
+func validate(proxy Go_Proxy, input string) {
 	connection := proxy.con
-	bytes2, err := hex.DecodeString("0387030303000201000000410000001800000051000000000000000000000005000100010100010000000000000000000000000000000000000000010100000001")
-	_, err = connection.Write(bytes2)
+	bytes, err := hex.DecodeString(input)
+	_, err = connection.Write(bytes)
 	if err != nil {
 		log.Fatal(err)
 	}
