@@ -35,9 +35,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"net"
-	"strconv"
-	"strings"
+	"sync"
 	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
@@ -64,7 +62,7 @@ type PathList struct {
 
 type rpkiManager struct {
 	AS      int
-	Proxy   C.SRxProxy
+	Proxy   Go_Proxy
 	ID      int
 	Updates []srx_update
 }
@@ -95,7 +93,7 @@ func (rm *rpkiManager) SetAS(as uint32) error {
 	log.WithFields(log.Fields{
 		"new ASN": as,
 		"old ASN": rm.AS,
-	}).Debug("Changing ASPA Manager ASN")
+	}).Debug("Changing RPKI Manager ASN")
 	if rm.AS != 0 {
 		return fmt.Errorf("AS was already configured")
 	}
@@ -104,7 +102,9 @@ func (rm *rpkiManager) SetAS(as uint32) error {
 }
 
 func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
-	// start validation
+	log.Info("Validation")
+	validate(rm.Proxy)
+	/*// start validation
 	log.Info("+---------------------------------------+")
 	log.WithFields(log.Fields{
 		"connection to server": C.isConnected(&rm.Proxy),
@@ -177,119 +177,172 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 		log.Info("Iterating...")
 		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
 		*ptr = C.ASSEGMENT(seg)
-	}*/
-
-	as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
-	var asPathList C.SRxASPathList
-	working_path := e.PathList
-	var testing_1 C.ASSEGMENT
-	testing_1.asn = C.uint(as_int)
-	asPathList.length = C.uchar((len(working_path)))
-	asPathList.segments = &testing_1
-	asPathList.asType = 2
-	asPathList.asRelationship = 1
-	/*
-
-		// allocate memory for the C array of ASSEGMENTs
-		cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
-		ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
-
-		log.Info(cArray)
-		log.Info((*C.ASSEGMENT)(cArray))
-		// copy the Go ASSEGMENTs to the C array
-		for i, seg := range assegments {
-			log.Info("Iterating")
-			log.Info(i)
-			log.Info(seg)
-			ptr = (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
-			*ptr = C.ASSEGMENT(seg)
-		}
-		log.Info(cArray)
-		log.Info((*C.ASSEGMENT)(cArray))
-
-		pathList := C.SRxASPathList{
-			length:         C.uchar(len(assegments)),
-			segments:       (*C.ASSEGMENT)(cArray),
-			asType:         2,
-			asRelationship: 1,
-		}
-		log.Info("PathList:")
-		log.Info(pathList.length)
-		log.Info(pathList.segments)
-		log.Info(pathList.segments.asn)
-		log.Info(pathList.asType)
-		log.Info(pathList.asRelationship)
+	}*/ /*
 
 		as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
 		var asPathList C.SRxASPathList
 		working_path := e.PathList
-		testing_1 := (*C.ASSEGMENT)(C.malloc(C.sizeof_ASSEGMENT))
+		var testing_1 C.ASSEGMENT
 		testing_1.asn = C.uint(as_int)
 		asPathList.length = C.uchar((len(working_path)))
-		asPathList.segments = testing_1
+		asPathList.segments = &testing_1
 		asPathList.asType = 2
-		asPathList.asRelationship = 1*/
+		asPathList.asRelationship = 1
+		/*
+
+			// allocate memory for the C array of ASSEGMENTs
+			cArray := C.malloc(C.size_t(len(assegments)) * C.sizeof_ASSEGMENT)
+			ptr := (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + C.sizeof_ASSEGMENT))
+
+			log.Info(cArray)
+			log.Info((*C.ASSEGMENT)(cArray))
+			// copy the Go ASSEGMENTs to the C array
+			for i, seg := range assegments {
+				log.Info("Iterating")
+				log.Info(i)
+				log.Info(seg)
+				ptr = (*C.ASSEGMENT)(unsafe.Pointer(uintptr(cArray) + uintptr(i)*C.sizeof_ASSEGMENT))
+				*ptr = C.ASSEGMENT(seg)
+			}
+			log.Info(cArray)
+			log.Info((*C.ASSEGMENT)(cArray))
+
+			pathList := C.SRxASPathList{
+				length:         C.uchar(len(assegments)),
+				segments:       (*C.ASSEGMENT)(cArray),
+				asType:         2,
+				asRelationship: 1,
+			}
+			log.Info("PathList:")
+			log.Info(pathList.length)
+			log.Info(pathList.segments)
+			log.Info(pathList.segments.asn)
+			log.Info(pathList.asType)
+			log.Info(pathList.asRelationship)
+
+			as_int, _ := strconv.Atoi(e.PathList[0].GetAsString())
+			var asPathList C.SRxASPathList
+			working_path := e.PathList
+			testing_1 := (*C.ASSEGMENT)(C.malloc(C.sizeof_ASSEGMENT))
+			testing_1.asn = C.uint(as_int)
+			asPathList.length = C.uchar((len(working_path)))
+			asPathList.segments = testing_1
+			asPathList.asType = 2
+			asPathList.asRelationship = 1*/
 
 	// Preparing BGPSec data
-	go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
-	var number1 C.uchar = 1
-	var number2 C.uint = 1
-	go_bgpsec.numberHops = 1
-	go_bgpsec.asPath = &number2
-	go_bgpsec.attr_length = 1
-	go_bgpsec.afi = 1
-	go_bgpsec.safi = 1
-	go_bgpsec.reserved = 1
-	go_bgpsec.local_as = 1
-	go_bgpsec.bgpsec_path_attr = &number1
+	/*
+		go_bgpsec := (*C.BGPSecData)(C.malloc(C.sizeof_BGPSecData))
+		var number1 C.uchar = 1
+		var number2 C.uint = 1
+		go_bgpsec.numberHops = 1
+		go_bgpsec.asPath = &number2
+		go_bgpsec.attr_length = 1
+		go_bgpsec.afi = 1
+		go_bgpsec.safi = 1
+		go_bgpsec.reserved = 1
+		go_bgpsec.local_as = 1
+		go_bgpsec.bgpsec_path_attr = &number1
 
-	log.Info(prefix.ip.addr)
-	log.Info(prefix.ip.version)
-	log.Info(prefix.length)
-	log.Info("-+-+-+")
-	log.Info("Relationship")
-	log.Info(asPathList.asRelationship)
-	log.Info("ASType")
-	log.Info(asPathList.asType)
-	log.Info("ASN")
-	log.Info(asPathList.segments.asn)
-	log.Info("Length")
-	log.Info(asPathList.length)
-	log.Info("Segments")
-	log.Info(asPathList.segments)
+		log.Info(prefix.ip.addr)
+		log.Info(prefix.ip.version)
+		log.Info(prefix.length)
+		log.Info("-+-+-+")
+		log.Info("Relationship")
+		log.Info(asPathList.asRelationship)
+		log.Info("ASType")
+		log.Info(asPathList.asType)
+		log.Info("ASN")
+		log.Info(asPathList.segments.asn)
+		log.Info("Length")
+		log.Info(asPathList.length)
+		log.Info("Segments")
+		log.Info(asPathList.segments)
 
-	if aspa {
-		C.verifyUpdate(&rm.Proxy, C.uint(rm.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
-	}
+		if aspa {
+			C.verifyUpdate(&rm.Proxy, C.uint(rm.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
+		}
 
-	/*if ascones {
-		C.verifyUpdate(&rm.Proxy, C.uint(rm.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
-	}*/
+		/*if ascones {
+			C.verifyUpdate(&rm.Proxy, C.uint(rm.ID), false, false, true, defaultResult, prefix, C.uint(as_int), go_bgpsec, asPathList)
+		}*/
+	/*
+		update_test := NewSrxUpdate(rm.ID)
+		rm.ID++
+		rm.Updates = append(rm.Updates, update_test)
+		C.free(unsafe.Pointer(defaultResult))
+		C.free(unsafe.Pointer(prefix))
+		C.free(unsafe.Pointer(go_bgpsec))
+		log.Info("+---------------------------------------+")*/
+}
 
-	update_test := NewSrxUpdate(rm.ID)
-	rm.ID++
-	rm.Updates = append(rm.Updates, update_test)
-	C.free(unsafe.Pointer(defaultResult))
-	C.free(unsafe.Pointer(prefix))
-	C.free(unsafe.Pointer(go_bgpsec))
-	log.Info("+---------------------------------------+")
+type Result struct {
+	userPtr unsafe.Pointer
 }
 
 func NewRPKIManager(as uint32) (*rpkiManager, error) {
-	go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
-	go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
-	srx_server_ip := C.CString("172.17.0.3")
-	srx_server_port := C.int(17900)
-	handshakeTimeout := C.int(100)
-	C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	connection := connectToSrxServer()
+	pr := Go_Proxy{
+		con:        connection,
+		ASN:        0,
+		Identifier: 65001,
+	}
+	sendHello(pr)
+	go proxyBackgroundThread(pr.con, &wg)
+
+	//proxy := createSRxProxy()
 	rm := &rpkiManager{
 		AS:      int(as),
-		Proxy:   *go_proxy,
+		Proxy:   pr,
 		ID:      0,
 		Updates: make([]srx_update, 0),
 	}
+
+	/*
+
+		runtime.GOMAXPROCS(100)
+		runtime.LockOSThread()
+		callbackChan := make(chan Result)
+		var wg sync.WaitGroup
+		var go_proxy *C.SRxProxy
+		wg.Add(1)
+
+		go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
+		go proxyBackgroundThread(*go_proxy, &wg, callbackChan)
+		//go_proxy := (*C.SRxProxy)(C.malloc(C.sizeof_SRxProxy))
+		//go_proxy = C.createSRxProxy(C.closure(C.Go_ValidationReady), C.closure(C.Go_SignaturesReady), C.closure(C.Go_SyncNotification), C.closure(C.Go_SrxCommManagement), 5, C.uint(65001), nil)
+		srx_server_ip := C.CString("172.17.0.3")
+		srx_server_port := C.int(17900)
+		handshakeTimeout := C.int(100)
+		C.connectToSRx(go_proxy, srx_server_ip, srx_server_port, handshakeTimeout, true)
+		wg.Wait()
+		rm := &rpkiManager{
+			AS:      int(as),
+			Proxy:   *go_proxy,
+			ID:      0,
+			Updates: make([]srx_update, 0),
+		}*/
 	return rm, nil
 }
+
+/*func proxyBackgroundThread(proxy C.SRxProxy, wg *sync.WaitGroup, callbackChan <-chan Result) {
+//runtime.LockOSThread()
+defer wg.Done()
+C.connectToSRx(&proxy, C.CString("172.17.0.3"), 17900, 100, false)
+/*for {
+	select {
+	case Result := <-callbackChan:
+		fmt.Println("Callback ausgeführt,Ergebnis:", Result)
+		time.Sleep(1 * time.Second)
+	default:
+		// Keine Callbacks oder Fehlermeldungen erhalten, weiterarbeiten oder auf Ereignisse warten
+		fmt.Println("Hintergrundthread arbeitet...")
+		time.Sleep(1 * time.Second) // Beispiel: Warten für 1 Sekunde
+	}
+}*/
+//}
 
 func (g *IPAddress) Pack(out unsafe.Pointer) {
 	buf := &bytes.Buffer{}
