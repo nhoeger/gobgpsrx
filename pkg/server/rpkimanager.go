@@ -92,13 +92,18 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 		for _, asn := range as_list {
 			hexValue := fmt.Sprintf("%08X", asn)
 			as_path_list += hexValue
-			log.Info("AS path list:   ", as_path_list)
+			log.Debug("AS path list:   ", as_path_list)
 		}
 
-		number_of_hops := fmt.Sprintf("%04X", path.GetAsPathLen())
-		log.Info("number of hops: ", number_of_hops)
+		num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
+		tmp_int := 4 * path.GetAsPathLen()
+		length = fmt.Sprintf("%08X", 60+tmp_int)
+		length_path_val_data = fmt.Sprintf("%08X", tmp_int)
 		origin_AS := fmt.Sprintf("%08X", path.GetSourceAs())
-		log.Info("Source AS:      ", origin_AS)
+		log.Debug("number of hops: ", num_of_hops)
+		log.Debug("Source AS:      ", origin_AS)
+		log.Debug("length:         ", length)
+		log.Debug("length val data:", length_path_val_data)
 	}
 
 	// extracting the propagated prefix
@@ -122,9 +127,9 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 	ipv4_address = tmp[len(tmp)-8:]
 	prefix_length = strconv.FormatInt(int64(prefix_len), 16)
 	local_as = fmt.Sprintf("%08X", rm.AS)
-	log.Info("local AS:       ", local_as)
-	log.Info("address:        ", ipv4_address)
-	log.Info("size:           ", prefix_length)
+	log.Debug("local AS:       ", local_as)
+	log.Debug("address:        ", ipv4_address)
+	log.Debug("size:           ", prefix_length)
 
 	// TODO: Request Token
 	output_string += flags + origin_result_source + path_result_source + aspa_result_source
