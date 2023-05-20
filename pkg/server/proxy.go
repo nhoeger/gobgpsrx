@@ -15,7 +15,7 @@ const (
 	HelloMessage      = "01000300000000000000001000000001"
 	GoodByeMessage    = "002"
 	ValidationMessage = "003"
-	SyncMessage       = "004"
+	SyncMessage       = "0a000000000000000000000c"
 )
 
 type Verification_Request struct {
@@ -43,20 +43,6 @@ func validate(proxy Go_Proxy, input string) {
 	}
 }
 
-func createSRxProxy() Go_Proxy {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	tmp := connectToSrxServer()
-	pr := Go_Proxy{
-		con:        tmp,
-		ASN:        0,
-		Identifier: 65001,
-	}
-	sendHello(pr)
-	go proxyBackgroundThread(pr.con, &wg)
-	return pr
-}
-
 func (*Go_Proxy) setAS(proxy Go_Proxy, ASN int) {
 	proxy.ASN = ASN
 }
@@ -78,8 +64,9 @@ func sendHello(proxy Go_Proxy) {
 	}
 }
 
-func proxyBackgroundThread(con net.Conn, wg *sync.WaitGroup) {
+func proxyBackgroundThread(rm rpkiManager, wg *sync.WaitGroup) {
 	defer wg.Done()
+	con := rm.Proxy.con
 	response := make([]byte, 1024)
 	for {
 		n, err := con.Read(response)
@@ -91,10 +78,15 @@ func proxyBackgroundThread(con net.Conn, wg *sync.WaitGroup) {
 			log.Info("Received Hello Response")
 		}
 
+		if strings.Contains(server_response, SyncMessage) {
+			log.Info("Received Sync Request")
+			rm.handleSyncCallback()
+		}
+
 		if server_response[:2] == "06" {
 			log.Info("Received Verify Notify")
-			handleVerifyNotify(server_response)
+			rm.handleVerifyNotify(server_response)
 		}
-		fmt.Println("Server:", server_response)
+		//fmt.Println("Server:", server_response)
 	}
 }
