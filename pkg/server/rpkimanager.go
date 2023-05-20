@@ -21,22 +21,45 @@ type rpkiManager struct {
 	Updates []srx_update
 }
 
-func (rm *rpkiManager) handleVerifyNotify(input string) {
-	fmt.Println("Handling verify notify")
+func handleVerifyNotify(input string, rm rpkiManager) {
+	log.Debug("+----------------------------------------+")
+	log.Debug("In verification callback function.")
+	log.Debug(input)
 	result_type := input[2:4]
+	update_identifer := input[len(input)-8:]
+	request_token := input[len(input)-16 : len(input)-8]
 	result := input[8:10]
-	if result_type == "87" {
-		log.Info("Setting deault value for newest validation request.")
+	log.Debug("Update identifier: ", update_identifer)
+	log.Debug("Request Token:     ", request_token)
+	log.Debug("Cached Updates:    ", len(rm.Updates))
+	for _, update := range rm.Updates {
+		log.Debug("local ID (dez):    ", update.local_id)
+		log.Debug("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
+		if fmt.Sprintf("%08X", update.local_id) == request_token {
+			log.Debug("In if Statement")
+			log.Debug("Changing Srx ID of update")
+			update.srx_id = update_identifer
+			log.Debug("srx ID:            ", update.srx_id)
+		}
+		if result_type == "04" {
+			log.Debug("Received new information for aspa validation.")
+			num, err := strconv.ParseInt(result[1:], 10, 64)
+			if err != nil {
+				fmt.Println("Conversion error:", err)
+				return
+			}
+			update.aspa = int(num)
+		}
 	}
-	fmt.Println("Result Type: ", result_type)
-	fmt.Println("Result: ", result)
+	log.Debug("+----------------------------------------+")
 }
 
 // Server send Sync message and Proxy responds with all cached updates
 func (rm *rpkiManager) handleSyncCallback() {
+	log.Debug("in sync callback function")
 	//TODO: Implementation
 	for _, Updates := range rm.Updates {
-		log.Info("Update: ", Updates.update_id)
+		log.Info("Update: ", Updates.local_id)
 	}
 }
 
@@ -53,6 +76,16 @@ func (rm *rpkiManager) SetAS(as uint32) error {
 }
 
 func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
+	update := srx_update{
+		local_id: rm.ID,
+		srx_id:   "",
+		path:     2,
+		origin:   2,
+		aspa:     2,
+		ascones:  2,
+	}
+	rm.ID++
+
 	output_string := "03"
 	flags := "00"
 	if aspa {
@@ -71,7 +104,7 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 	path_default_result := "03"
 	aspa_default_result := "03"
 	prefix_length := "18"
-	request_token := "00000051"
+	request_token := fmt.Sprintf("%08X", update.local_id)
 	ipv4_address := "07030700"
 	origin_as := "0000fdec"
 	length_path_val_data := "00000008"
@@ -131,19 +164,15 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 	log.Debug("address:        ", ipv4_address)
 	log.Debug("size:           ", prefix_length)
 
-	// TODO: Request Token
 	output_string += flags + origin_result_source + path_result_source + aspa_result_source
 	output_string += reserved + as_path_type + as_relation_type + length + origin_default_result
 	output_string += path_default_result + aspa_default_result + prefix_length + request_token
 	output_string += ipv4_address + origin_as + length_path_val_data + num_of_hops + bgpsec_length
 	output_string += afi + safi + pre_len + ip_pre_add_byte_a + ip_pre_add_byte_b + ip_pre_add_byte_c
 	output_string += ip_pre_add_byte_d + local_as + as_path_list
-	//log.Debug(output_string)
-	//tmp_string := "0381010101000204000000440303031800000001070307000000fded000000080002000000000000000000000000000000000000000000000000000000001dfc0000fded"
-	//log.Debug(tmp_string)
-	//log.Debug(len(output_string), " und ", len(tmp_string))
-	validate(rm.Proxy, output_string)
 
+	validate_call(rm.Proxy, output_string)
+	rm.Updates = append(rm.Updates, update)
 }
 
 func NewRPKIManager(as uint32) (*rpkiManager, error) {
@@ -158,11 +187,11 @@ func NewRPKIManager(as uint32) (*rpkiManager, error) {
 	rm := &rpkiManager{
 		AS:      int(as),
 		Proxy:   pr,
-		ID:      0,
+		ID:      1,
 		Updates: make([]srx_update, 0),
 	}
 	sendHello(pr)
-	go proxyBackgroundThread(*rm, &wg)
+	go proxyBackgroundThread(rm, &wg)
 
 	return rm, nil
 }

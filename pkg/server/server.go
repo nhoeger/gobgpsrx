@@ -140,6 +140,7 @@ type BgpServer struct {
 	uuidMap       map[string]uuid.UUID
 	bgpsecManager *bgpsecManager
 	rpkiManager   *rpkiManager
+	updateManager *updateManager
 }
 
 func NewBgpServer(opt ...ServerOption) *BgpServer {
@@ -149,6 +150,7 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 	}
 	roaTable := table.NewROATable()
 	bgpsecManager, _ := NewBgpsecManager(0)
+	updateManager := createUpdateManager()
 	rpkiManager, _ := NewRPKIManager(0)
 	s := &BgpServer{
 		neighborMap:   make(map[string]*peer),
@@ -161,6 +163,7 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 		roaTable:      roaTable,
 		bgpsecManager: bgpsecManager,
 		rpkiManager:   rpkiManager,
+		updateManager: &updateManager,
 	}
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
@@ -1601,7 +1604,9 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
+			log.Info("Before Rpkimanager Update: ", len(s.rpkiManager.Updates))
 			s.rpkiManager.validate(e, true, false)
+			log.Info("After Rpkimanager Update: ", len(s.rpkiManager.Updates))
 			//s.rpkiManager.validate(e,false,true)
 			if peer.fsm.pConf.Config.ASPAEnable {
 				log.WithFields(log.Fields{

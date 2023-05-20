@@ -34,7 +34,7 @@ func CallbackForValidationResults(input string) {
 	fmt.Println(input)
 }
 
-func validate(proxy Go_Proxy, input string) {
+func validate_call(proxy Go_Proxy, input string) {
 	connection := proxy.con
 	bytes, err := hex.DecodeString(input)
 	_, err = connection.Write(bytes)
@@ -64,7 +64,7 @@ func sendHello(proxy Go_Proxy) {
 	}
 }
 
-func proxyBackgroundThread(rm rpkiManager, wg *sync.WaitGroup) {
+func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	defer wg.Done()
 	con := rm.Proxy.con
 	response := make([]byte, 1024)
@@ -75,18 +75,19 @@ func proxyBackgroundThread(rm rpkiManager, wg *sync.WaitGroup) {
 		}
 		server_response := hex.EncodeToString(response[:n])
 		if strings.Contains(server_response, HelloMessage) {
-			log.Info("Received Hello Response")
+			log.Debug("Received Hello Response")
 		}
 
 		if strings.Contains(server_response, SyncMessage) {
-			log.Info("Received Sync Request")
+			log.Debug("Received Sync Request")
 			rm.handleSyncCallback()
 		}
 
 		if server_response[:2] == "06" {
-			log.Info("Received Verify Notify")
-			rm.handleVerifyNotify(server_response)
+			log.Debug("Received Verify Notify")
+			log.Debug("Num2 oder so:", len(rm.Updates))
+			handleVerifyNotify(server_response, *rm)
 		}
-		//fmt.Println("Server:", server_response)
+		log.Debug("Server:", server_response)
 	}
 }
