@@ -16,8 +16,8 @@ import (
 
 type rpkiManager struct {
 	AS      int
-	Proxy   Go_Proxy
 	ID      int
+	Proxy   Go_Proxy
 	Updates []srx_update
 }
 
