@@ -57,15 +57,25 @@ func connectToSrxServer() net.Conn {
 }
 
 func sendHello(proxy Go_Proxy) {
-	bytes, err := hex.DecodeString("000003000000000000000014000000010000fde9" + strconv.FormatInt(int64(proxy.ASN), 16))
+	bytes, err := hex.DecodeString("000003000000000000000014000000010000fde9" + strconv.FormatInt(int64(proxy.Identifier), 16))
 	_, err = proxy.con.Write(bytes)
 	if err != nil {
-		log.Info(err)
+		log.Fatal("Sending Hello Failed: ", err)
 	}
+}
+
+func createProxy(ASN int) Go_Proxy {
+	connection := connectToSrxServer()
+	pr := Go_Proxy{
+		con:        connection,
+		Identifier: ASN,
+	}
+	return pr
 }
 
 func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	defer wg.Done()
+	sendHello(rm.Proxy)
 	con := rm.Proxy.con
 	response := make([]byte, 1024)
 	for {

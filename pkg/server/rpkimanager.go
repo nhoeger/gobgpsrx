@@ -11,6 +11,7 @@ import (
 	//_ "github.com/osrg/gobgp/table"
 	_ "os"
 
+	"github.com/osrg/gobgp/pkg/packet/bgp"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -18,6 +19,7 @@ type rpkiManager struct {
 	AS      int
 	ID      int
 	Proxy   Go_Proxy
+	Server  *BgpServer
 	Updates []srx_update
 }
 
@@ -49,6 +51,7 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 				return
 			}
 			update.aspa = int(num)
+			//rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 		}
 	}
 	log.Debug("+----------------------------------------+")
@@ -75,10 +78,13 @@ func (rm *rpkiManager) SetAS(as uint32) error {
 	return nil
 }
 
-func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
+func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa bool, ascones bool) {
 	update := srx_update{
 		local_id: rm.ID,
 		srx_id:   "",
+		peer:     peer,
+		fsmMsg:   e,
+		bgpMsg:   m,
 		path:     2,
 		origin:   2,
 		aspa:     2,
@@ -178,20 +184,17 @@ func (rm *rpkiManager) validate(e *fsmMsg, aspa bool, ascones bool) {
 func NewRPKIManager(as uint32) (*rpkiManager, error) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	connection := connectToSrxServer()
-	pr := Go_Proxy{
-		con:        connection,
-		ASN:        0,
-		Identifier: 65001,
-	}
+	pr := createProxy(int(as))
 	rm := &rpkiManager{
 		AS:      int(as),
 		Proxy:   pr,
 		ID:      1,
 		Updates: make([]srx_update, 0),
 	}
-	sendHello(pr)
 	go proxyBackgroundThread(rm, &wg)
-
 	return rm, nil
+}
+
+func (rm *rpkiManager) SetServer(s *BgpServer) {
+	rm.Server = s
 }
