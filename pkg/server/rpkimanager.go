@@ -60,22 +60,10 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 // Server send Sync message and Proxy responds with all cached updates
 func (rm *rpkiManager) handleSyncCallback() {
 	log.Debug("in sync callback function")
-	//TODO: Implementation
 	for _, Updates := range rm.Updates {
-		log.Info("Update: ", Updates.local_id)
+		log.Debug("Requesting Validation for Update ", Updates.local_id)
+		rm.validate(Updates.peer, Updates.bgpMsg, Updates.fsmMsg, true, false)
 	}
-}
-
-func (rm *rpkiManager) SetAS(as uint32) error {
-	log.WithFields(log.Fields{
-		"new ASN": as,
-		"old ASN": rm.AS,
-	}).Debug("Changing RPKI Manager ASN")
-	if rm.AS != 0 {
-		return fmt.Errorf("AS was already configured")
-	}
-	rm.AS = int(as)
-	return nil
 }
 
 func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa bool, ascones bool) {
@@ -181,13 +169,13 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 	rm.Updates = append(rm.Updates, update)
 }
 
-func NewRPKIManager(as uint32) (*rpkiManager, error) {
+func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	pr := createProxy(int(as))
 	rm := &rpkiManager{
-		AS:      int(as),
-		Proxy:   pr,
+		AS:      int(s.bgpConfig.Global.Config.As),
+		Server:  s,
+		Proxy:   createProxy(),
 		ID:      1,
 		Updates: make([]srx_update, 0),
 	}
@@ -195,6 +183,25 @@ func NewRPKIManager(as uint32) (*rpkiManager, error) {
 	return rm, nil
 }
 
-func (rm *rpkiManager) SetServer(s *BgpServer) {
+func (rm *rpkiManager) SetServer(s *BgpServer) error {
+	log.WithFields(log.Fields{
+		"new Server": s,
+	}).Debug("Changing RPKI Manager BGP Server")
+	if rm.Server != nil {
+		return fmt.Errorf("Server was already configured")
+	}
 	rm.Server = s
+	return nil
+}
+
+func (rm *rpkiManager) SetAS(as uint32) error {
+	log.WithFields(log.Fields{
+		"new ASN": as,
+		"old ASN": rm.AS,
+	}).Debug("Changing RPKI Manager ASN")
+	if rm.AS != 0 {
+		return fmt.Errorf("AS was already configured")
+	}
+	rm.AS = int(as)
+	return nil
 }

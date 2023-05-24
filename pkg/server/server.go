@@ -151,7 +151,6 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 	roaTable := table.NewROATable()
 	bgpsecManager, _ := NewBgpsecManager(0)
 	updateManager := createUpdateManager()
-	rpkiManager, _ := NewRPKIManager(0)
 	s := &BgpServer{
 		neighborMap:   make(map[string]*peer),
 		peerGroupMap:  make(map[string]*peerGroup),
@@ -162,10 +161,9 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 		roaManager:    newROAManager(roaTable),
 		roaTable:      roaTable,
 		bgpsecManager: bgpsecManager,
-		rpkiManager:   rpkiManager,
 		updateManager: &updateManager,
 	}
-	rpkiManager.SetServer(s)
+	s.rpkiManager, _ = NewRPKIManager(s)
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
 	gl_bgpsecManager = bgpsecManager

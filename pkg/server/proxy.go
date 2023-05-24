@@ -64,17 +64,17 @@ func sendHello(proxy Go_Proxy) {
 	}
 }
 
-func createProxy(ASN int) Go_Proxy {
+func createProxy() Go_Proxy {
 	connection := connectToSrxServer()
 	pr := Go_Proxy{
-		con:        connection,
-		Identifier: ASN,
+		con: connection,
 	}
 	return pr
 }
 
 func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	defer wg.Done()
+	rm.Proxy.Identifier = rm.AS
 	sendHello(rm.Proxy)
 	con := rm.Proxy.con
 	response := make([]byte, 1024)
