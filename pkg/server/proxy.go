@@ -100,7 +100,7 @@ func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 		}
 
 		if server_response[:2] == "06" {
-			//handleMessage(server_response, rm)
+			handleMessage(server_response, rm)
 		}
 		log.Info("Server:", server_response)
 	}
@@ -115,7 +115,9 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 			//log.Info("Buffer not empty")
 			elapsed := time.Since(startTime)
 			if elapsed >= 2*time.Second {
+				//log.Info("Lenght of Buffer: ", len(rm.Proxy.Buffer))
 				bytes, _ := hex.DecodeString(elem)
+				//log.Info("Sending:          ", bytes)
 				_, _ = con.Write(bytes)
 				startTime = time.Now()
 				rm.Proxy.Buffer = rm.Proxy.Buffer[1:]
