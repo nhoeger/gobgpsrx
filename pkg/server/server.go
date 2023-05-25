@@ -1603,9 +1603,7 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			log.Info("Before Rpkimanager Update: ", len(s.rpkiManager.Updates))
-			s.rpkiManager.validate(peer, m, e, true, false)
-			log.Info("After Rpkimanager Update: ", len(s.rpkiManager.Updates))
+			s.rpkiManager.validate(peer, m, e, true, true)
 			//s.rpkiManager.validate(e,false,true)
 			return
 		}

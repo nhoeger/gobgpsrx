@@ -24,35 +24,47 @@ type rpkiManager struct {
 }
 
 func handleVerifyNotify(input string, rm rpkiManager) {
-	log.Debug("+----------------------------------------+")
-	log.Debug("In verification callback function.")
-	log.Debug(input)
+	log.Info("+----------------------------------------+")
+	log.Info("In verification callback function.")
+	log.Info(input)
 	result_type := input[2:4]
 	update_identifer := input[len(input)-8:]
 	request_token := input[len(input)-16 : len(input)-8]
 	result := input[8:10]
-	log.Debug("Update identifier: ", update_identifer)
-	log.Debug("Request Token:     ", request_token)
-	log.Debug("Cached Updates:    ", len(rm.Updates))
+	log.Info("Update identifier: ", update_identifer)
+	log.Info("Request Token:     ", request_token)
+	log.Info("Cached Updates:    ", len(rm.Updates))
+	log.Info("Result before: ", result)
 	for _, update := range rm.Updates {
-		log.Debug("local ID (dez):    ", update.local_id)
-		log.Debug("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
+		//log.Debug("local ID (dez):    ", update.local_id)
+		//log.Debug("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
 		if fmt.Sprintf("%08X", update.local_id) == request_token {
 			log.Debug("In if Statement")
 			log.Debug("Changing Srx ID of update")
 			update.srx_id = update_identifer
 			log.Debug("srx ID:            ", update.srx_id)
 		}
-		if result_type == "04" {
-			log.Debug("Received new information for aspa validation.")
-			num, err := strconv.ParseInt(result[1:], 10, 64)
-			if err != nil {
-				fmt.Println("Conversion error:", err)
-				return
+		if request_token == "00000000" && fmt.Sprintf("%08X", update.srx_id) == update_identifer {
+			log.Info("Result in if: ", result)
+			if result_type == "04" {
+				log.Debug("Received new information for aspa validation.")
+				num, err := strconv.ParseInt(result[1:], 10, 64)
+				if err != nil {
+					fmt.Println("Conversion error:", err)
+					return
+				}
+				if result == "00" {
+					log.Debug("Adding Update")
+					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
+				}
+				if result == "02" {
+					log.Info("Invalid Update detected")
+				}
+				update.aspa = int(num)
+				//log.Debug("Result: ", result)
 			}
-			update.aspa = int(num)
-			//rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 		}
+
 	}
 	log.Debug("+----------------------------------------+")
 }

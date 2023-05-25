@@ -84,6 +84,7 @@ func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 			log.Info(err)
 		}
 		server_response := hex.EncodeToString(response[:n])
+
 		if strings.Contains(server_response, HelloMessage) {
 			log.Debug("Received Hello Response")
 		}
@@ -94,10 +95,20 @@ func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 		}
 
 		if server_response[:2] == "06" {
-			log.Debug("Received Verify Notify")
-			log.Debug("Num2 oder so:", len(rm.Updates))
-			handleVerifyNotify(server_response, *rm)
+			handleMessage(server_response, rm)
 		}
 		log.Debug("Server:", server_response)
+	}
+}
+
+func handleMessage(input string, rm *rpkiManager) {
+	if input[:2] == "06" {
+		log.Info("Processing Validation Input")
+		if len(input) > 40 {
+			handleVerifyNotify(input[:40], *rm)
+			handleMessage(input[40:], rm)
+		} else {
+			handleVerifyNotify(input, *rm)
+		}
 	}
 }
