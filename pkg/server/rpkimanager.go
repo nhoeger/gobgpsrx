@@ -20,31 +20,43 @@ type rpkiManager struct {
 	ID      int
 	Proxy   Go_Proxy
 	Server  *BgpServer
-	Updates []srx_update
+	Updates []*srx_update
 }
 
 func handleVerifyNotify(input string, rm rpkiManager) {
-	log.Info("+----------------------------------------+")
-	log.Info("In verification callback function.")
+	//log.Info("+----------------------------------------+")
+	//log.Info("In verification callback function.")
 	log.Info(input)
 	result_type := input[2:4]
 	update_identifer := input[len(input)-8:]
 	request_token := input[len(input)-16 : len(input)-8]
 	result := input[8:10]
+	//	if result != "00" {
+	//		log.Info("Not a valid update")
+	//	return
+	//}
+	log.Info("+----------------------------------------+")
 	log.Info("Update identifier: ", update_identifer)
 	log.Info("Request Token:     ", request_token)
 	log.Info("Cached Updates:    ", len(rm.Updates))
-	log.Info("Result before: ", result)
+	log.Info("Result before:     ", result)
 	for _, update := range rm.Updates {
+		//log.Info("ID:    ", update.local_id)
+		//log.Info("SRx-ID:", update.srx_id)
 		//log.Debug("local ID (dez):    ", update.local_id)
-		//log.Debug("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
+		//log.Info("Reqeust Token:     ", request_token)
+		//log.Info("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
 		if fmt.Sprintf("%08X", update.local_id) == request_token {
-			log.Debug("In if Statement")
-			log.Debug("Changing Srx ID of update")
+			log.Info("In if Statement")
+			log.Info("Changing Srx ID of update")
 			update.srx_id = update_identifer
-			log.Debug("srx ID:            ", update.srx_id)
+			log.Info("srx ID:            ", update.srx_id)
+			log.Info("+----------------------------------------+")
+			return
 		}
-		if request_token == "00000000" && fmt.Sprintf("%08X", update.srx_id) == update_identifer {
+		//log.Info("BOOl 1", (request_token == "00000000"))
+		//log.Info("BOOl 2", (update.srx_id == update_identifer))
+		if request_token == "00000000" && update.srx_id == update_identifer {
 			log.Info("Result in if: ", result)
 			if result_type == "04" {
 				log.Debug("Received new information for aspa validation.")
@@ -56,17 +68,20 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 				if result == "00" {
 					log.Debug("Adding Update")
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
+					log.Info("+----------------------------------------+")
+					return
 				}
 				if result == "02" {
 					log.Info("Invalid Update detected")
+					log.Info("+----------------------------------------+")
+					return
 				}
 				update.aspa = int(num)
-				//log.Debug("Result: ", result)
 			}
 		}
 
 	}
-	log.Debug("+----------------------------------------+")
+	log.Info("+----------------------------------------+")
 }
 
 // Server send Sync message and Proxy responds with all cached updates
@@ -104,7 +119,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 	aspa_result_source := "03"
 	reserved := "00"
 	as_path_type := "02"
-	as_relation_type := "00"
+	as_relation_type := "04"
 	length := "00000044"
 	origin_default_result := "03"
 	path_default_result := "03"
@@ -177,8 +192,8 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 	output_string += afi + safi + pre_len + ip_pre_add_byte_a + ip_pre_add_byte_b + ip_pre_add_byte_c
 	output_string += ip_pre_add_byte_d + local_as + as_path_list
 
-	validate_call(rm.Proxy, output_string)
-	rm.Updates = append(rm.Updates, update)
+	validate_call(&rm.Proxy, output_string)
+	rm.Updates = append(rm.Updates, &update)
 }
 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
@@ -189,7 +204,7 @@ func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 		Server:  s,
 		Proxy:   createProxy(),
 		ID:      1,
-		Updates: make([]srx_update, 0),
+		Updates: make([]*srx_update, 0),
 	}
 	go proxyBackgroundThread(rm, &wg)
 	return rm, nil
