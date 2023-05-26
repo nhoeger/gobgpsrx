@@ -2,10 +2,8 @@ package server
 
 import (
 	"encoding/hex"
-	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -25,25 +23,16 @@ type Verification_Request struct {
 }
 
 type Go_Proxy struct {
-	con        net.Conn
-	ASN        int
-	Identifier int
-	Buffer     []string
-}
-
-func CallbackForValidationResults(input string) {
-	fmt.Println("Received a validation callback")
-	fmt.Println(input)
+	con          net.Conn
+	ASN          int
+	Identifier   int
+	InputBuffer  []string
+	OutputBuffer []string
+	lastCall     time.Time
 }
 
 func validate_call(proxy *Go_Proxy, input string) {
-	//connection := proxy.con
-	proxy.Buffer = append(proxy.Buffer, input) /*
-		bytes, err := hex.DecodeString(input)
-		_, err = connection.Write(bytes)
-		if err != nil {
-			log.Fatal(err)
-		}*/
+	proxy.InputBuffer = append(proxy.InputBuffer, input)
 }
 
 func (*Go_Proxy) setAS(proxy Go_Proxy, ASN int) {
@@ -65,7 +54,6 @@ func sendHello(proxy *Go_Proxy) {
 	if err != nil {
 		log.Fatal("Sending Hello Failed: ", err)
 	}
-	//proxy.Buffer = append(proxy.Buffer, string(bytes))
 }
 
 func createProxy() Go_Proxy {
@@ -77,33 +65,13 @@ func createProxy() Go_Proxy {
 }
 
 func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
+	rm.Proxy.lastCall = time.Now()
 	defer wg.Done()
 	rm.Proxy.Identifier = rm.AS
 	sendHello(&rm.Proxy)
-	con := rm.Proxy.con
-	response := make([]byte, 1024)
+	wg.Add(2)
 	go senderBackgroundThread(rm, wg)
-	for {
-		n, err := con.Read(response)
-		if err != nil {
-			log.Info(err)
-		}
-		server_response := hex.EncodeToString(response[:n])
-
-		if strings.Contains(server_response, HelloMessage) {
-			log.Debug("Received Hello Response")
-		}
-
-		if strings.Contains(server_response, SyncMessage) {
-			log.Debug("Received Sync Request")
-			rm.handleSyncCallback()
-		}
-
-		if server_response[:2] == "06" {
-			handleMessage(server_response, rm)
-		}
-		log.Info("Server:", server_response)
-	}
+	go receiverBackgroundThread(rm, wg)
 }
 
 func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
@@ -111,30 +79,69 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	con := rm.Proxy.con
 	startTime := time.Now()
 	for {
-		for _, elem := range rm.Proxy.Buffer {
-			//log.Info("Buffer not empty")
+		for _, elem := range rm.Proxy.InputBuffer {
 			elapsed := time.Since(startTime)
 			if elapsed >= 2*time.Second {
-				//log.Info("Lenght of Buffer: ", len(rm.Proxy.Buffer))
 				bytes, _ := hex.DecodeString(elem)
-				//log.Info("Sending:          ", bytes)
 				_, _ = con.Write(bytes)
 				startTime = time.Now()
-				rm.Proxy.Buffer = rm.Proxy.Buffer[1:]
+				rm.Proxy.InputBuffer = rm.Proxy.InputBuffer[1:]
 			}
 		}
 
 	}
 }
 
-func handleMessage(input string, rm *rpkiManager) {
-	if input[:2] == "06" {
-		log.Info("Processing Validation Input")
-		if len(input) > 40 {
-			handleVerifyNotify(input[:40], *rm)
-			handleMessage(input[40:], rm)
+func receiverBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
+	defer wg.Done()
+	con := rm.Proxy.con
+	response := make([]byte, 1024)
+	for {
+		n, err := con.Read(response)
+		if err != nil {
+			log.Info(err)
+		}
+		server_response := hex.EncodeToString(response[:n])
+		if server_response != "" {
+			log.Info("Server:      ", server_response)
+			rm.Proxy.OutputBuffer = append(rm.Proxy.OutputBuffer, server_response)
+		}
+		for len(rm.Proxy.OutputBuffer) > 0 {
+			processInput(rm)
+		}
+		log.Debug("len: ", len(rm.Proxy.OutputBuffer))
+	}
+}
+
+func processInput(rm *rpkiManager) {
+	elem := rm.Proxy.OutputBuffer[0]
+	if elem[:2] == "01" {
+		log.Debug("Received Hello Response")
+		if len(elem) > 32 {
+			log.Debug("More than just the hello message")
+			rm.Proxy.OutputBuffer[0] = elem[32:]
 		} else {
-			handleVerifyNotify(input, *rm)
+			rm.Proxy.OutputBuffer = rm.Proxy.OutputBuffer[1:]
+		}
+	}
+	if elem[:2] == "0a" {
+		log.Debug("Received Sync Request")
+		rm.handleSyncCallback()
+		if len(elem) > 24 {
+			log.Debug("More than just the Sync message")
+			rm.Proxy.OutputBuffer[0] = elem[24:]
+		} else {
+			rm.Proxy.OutputBuffer = rm.Proxy.OutputBuffer[1:]
+		}
+	}
+	if elem[:2] == "06" {
+		log.Debug("Processing Validation Input")
+		if len(elem) > 40 {
+			handleVerifyNotify(elem[:40], *rm)
+			rm.Proxy.OutputBuffer[0] = elem[40:]
+		} else {
+			handleVerifyNotify(elem, *rm)
+			rm.Proxy.OutputBuffer = rm.Proxy.OutputBuffer[1:]
 		}
 	}
 }
