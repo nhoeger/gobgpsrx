@@ -40,13 +40,16 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 	log.Info("Request Token:     ", request_token)
 	log.Info("Cached Updates:    ", len(rm.Updates))
 	log.Info("Result before:     ", result)
-	for _, update := range rm.Updates {
-		//log.Info("ID:    ", update.local_id)
-		//log.Info("SRx-ID:", update.srx_id)
+	for i, update := range rm.Updates {
+		log.Info("ID:    ", update.local_id)
+		log.Info("SRx-ID:", update.srx_id)
+		loc_ID := fmt.Sprintf("%08X", update.local_id)
+
 		//log.Debug("local ID (dez):    ", update.local_id)
 		//log.Info("Reqeust Token:     ", request_token)
 		//log.Info("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
-		if fmt.Sprintf("%08X", update.local_id) == request_token {
+		if strings.ToLower(loc_ID) == strings.ToLower(request_token) {
+			log.Info("Path for Update:   ", update.fsmMsg.PathList)
 			log.Info("In if Statement")
 			log.Info("Changing Srx ID of update")
 			update.srx_id = update_identifer
@@ -57,6 +60,8 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 		//log.Info("BOOl 1", (request_token == "00000000"))
 		//log.Info("BOOl 2", (update.srx_id == update_identifer))
 		if request_token == "00000000" && update.srx_id == update_identifer {
+
+			log.Info("Path for Update:   ", update.fsmMsg.PathList)
 			log.Info("Result in if: ", result)
 			if result_type == "04" {
 				log.Debug("Received new information for aspa validation.")
@@ -68,11 +73,13 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 				if result == "00" {
 					log.Debug("Adding Update")
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
+					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					log.Info("+----------------------------------------+")
 					return
 				}
 				if result == "02" {
 					log.Info("Invalid Update detected")
+					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					log.Info("+----------------------------------------+")
 					return
 				}

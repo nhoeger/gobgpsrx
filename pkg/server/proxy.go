@@ -40,7 +40,7 @@ func (*Go_Proxy) setAS(proxy Go_Proxy, ASN int) {
 }
 
 func connectToSrxServer() net.Conn {
-	server := "172.17.0.3:17900"
+	server := "localhost:17900"
 	conn, err := net.Dial("tcp", server)
 	if err != nil {
 		log.Fatal("Connection to Server failed!")
@@ -103,7 +103,7 @@ func receiverBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 		}
 		server_response := hex.EncodeToString(response[:n])
 		if server_response != "" {
-			log.Info("Server:      ", server_response)
+			log.Debug("Server:      ", server_response)
 			rm.Proxy.OutputBuffer = append(rm.Proxy.OutputBuffer, server_response)
 		}
 		for len(rm.Proxy.OutputBuffer) > 0 {
