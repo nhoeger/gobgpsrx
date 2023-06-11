@@ -57,10 +57,8 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 			log.Info("+----------------------------------------+")
 			return
 		}
-		//log.Info("BOOl 1", (request_token == "00000000"))
-		//log.Info("BOOl 2", (update.srx_id == update_identifer))
-		if request_token == "00000000" && update.srx_id == update_identifer {
 
+		if update.srx_id == update_identifer {
 			log.Info("Path for Update:   ", update.fsmMsg.PathList)
 			log.Info("Result in if: ", result)
 			if result_type == "04" {
@@ -101,76 +99,63 @@ func (rm *rpkiManager) handleSyncCallback() {
 }
 
 func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa bool, ascones bool) {
-	update := srx_update{
-		local_id: rm.ID,
-		srx_id:   "",
-		peer:     peer,
-		fsmMsg:   e,
-		bgpMsg:   m,
-		path:     2,
-		origin:   2,
-		aspa:     2,
-		ascones:  2,
-	}
-	rm.ID++
-
-	output_string := "03"
-	flags := "00"
-	if aspa {
-		flags = "84"
-	} else {
-		flags = "00"
-	}
-	origin_result_source := "03"
-	path_result_source := "03"
-	aspa_result_source := "03"
-	reserved := "00"
-	as_path_type := "02"
-	as_relation_type := "04"
-	length := "00000044"
-	origin_default_result := "03"
-	path_default_result := "03"
-	aspa_default_result := "03"
-	prefix_length := "18"
-	request_token := fmt.Sprintf("%08X", update.local_id)
-	ipv4_address := "07030700"
-	origin_as := "0000fdec"
-	length_path_val_data := "00000008"
-	num_of_hops := "0002"
-	bgpsec_length := "0000"
-	afi := "0000"
-	safi := "00"
-	pre_len := "00"
-	ip_pre_add_byte_a := "00000000"
-	ip_pre_add_byte_b := "00000000"
-	ip_pre_add_byte_c := "00000000"
-	ip_pre_add_byte_d := "00000000"
-	local_as := "00000000"
-	as_path_list := ""
-
+	var updates_to_send []string
 	for _, path := range e.PathList {
+		update := srx_update{
+			local_id: rm.ID,
+			srx_id:   "",
+			peer:     peer,
+			fsmMsg:   e,
+			bgpMsg:   m,
+			path:     2,
+			origin:   2,
+			aspa:     2,
+			ascones:  2,
+		}
+		rm.ID++
+		vm := VerifyMessage{
+			PDU:                   "03",
+			OriginResultSoruce:    "01",
+			PathResultSoruce:      "01",
+			ASPAResultSoruce:      "01",
+			reserved:              "00",
+			ASPathType:            "02",
+			ASRelationType:        "04",
+			Length:                "00000044",
+			origin_default_result: "03",
+			path_default_result:   "03",
+			aspa_default_result:   "03",
+			prefix_len:            "18",
+			request_token:         fmt.Sprintf("%08X", update.local_id),
+			prefix:                "00000000",
+			origin_AS:             "0000fdec",
+			length_path_val_data:  "00000008",
+			bgpsec_length:         "0000",
+			afi:                   "0000",
+			safi:                  "00",
+			prefix_len_bgpsec:     "00",
+			ip_pre_add_byte_a:     "00000000",
+			ip_pre_add_byte_b:     "00000000",
+			ip_pre_add_byte_c:     "00000000",
+			ip_pre_add_byte_d:     "00000000",
+			local_as:              "00000000",
+			as_path_list:          "",
+		}
+		log.Info(vm)
+		if aspa {
+			vm.Flags = "84"
+		} else {
+			vm.Flags = "00"
+		}
 		as_list := path.GetAsList()
+		log.Info("AS path list:   ", as_list)
 		for _, asn := range as_list {
 			hexValue := fmt.Sprintf("%08X", asn)
-			as_path_list += hexValue
-			log.Debug("AS path list:   ", as_path_list)
+			vm.as_path_list += hexValue
+
 		}
-
-		num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
-		tmp_int := 4 * path.GetAsPathLen()
-		length = fmt.Sprintf("%08X", 60+tmp_int)
-		length_path_val_data = fmt.Sprintf("%08X", tmp_int)
-		origin_AS := fmt.Sprintf("%08X", path.GetSourceAs())
-		log.Debug("number of hops: ", num_of_hops)
-		log.Debug("Source AS:      ", origin_AS)
-		log.Debug("length:         ", length)
-		log.Debug("length val data:", length_path_val_data)
-	}
-
-	// extracting the propagated prefix
-	prefix_len := 0
-	prefix_addr := net.ParseIP("0.0.0.0")
-	for _, path := range e.PathList {
+		prefix_len := 0
+		prefix_addr := net.ParseIP("0.0.0.0")
 		path_string := path.String()
 		words := strings.Fields(path_string)
 		for _, word := range words {
@@ -182,25 +167,32 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 				}
 			}
 		}
+		tmp := hex.EncodeToString(prefix_addr)
+		vm.prefix = tmp[len(tmp)-8:]
+		vm.prefix_len = strconv.FormatInt(int64(prefix_len), 16)
+		//local_as = fmt.Sprintf("%08X", rm.AS)
+		//log.Debug("local AS:       ", local_as)
+		log.Debug("address:        ", vm.prefix)
+		log.Debug("size:           ", vm.prefix_len)
+		vm.origin_AS = fmt.Sprintf("%08X", as_list[len(as_list)-1])
+		//log.Info("Origin AS: ", origin_as)
+		vm.num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
+		tmp_int := 4 * path.GetAsPathLen()
+		vm.Length = fmt.Sprintf("%08X", 60+tmp_int)
+		vm.length_path_val_data = fmt.Sprintf("%08X", tmp_int)
+		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
+		log.Debug("number of hops: ", vm.num_of_hops)
+		log.Debug("Source AS:      ", vm.origin_AS)
+		log.Debug("length:         ", vm.Length)
+		log.Debug("length val data:", vm.length_path_val_data)
+		updates_to_send = append(updates_to_send, structToString(vm))
+		rm.Updates = append(rm.Updates, &update)
 	}
 
-	tmp := hex.EncodeToString(prefix_addr)
-	ipv4_address = tmp[len(tmp)-8:]
-	prefix_length = strconv.FormatInt(int64(prefix_len), 16)
-	local_as = fmt.Sprintf("%08X", rm.AS)
-	log.Debug("local AS:       ", local_as)
-	log.Debug("address:        ", ipv4_address)
-	log.Debug("size:           ", prefix_length)
-
-	output_string += flags + origin_result_source + path_result_source + aspa_result_source
-	output_string += reserved + as_path_type + as_relation_type + length + origin_default_result
-	output_string += path_default_result + aspa_default_result + prefix_length + request_token
-	output_string += ipv4_address + origin_as + length_path_val_data + num_of_hops + bgpsec_length
-	output_string += afi + safi + pre_len + ip_pre_add_byte_a + ip_pre_add_byte_b + ip_pre_add_byte_c
-	output_string += ip_pre_add_byte_d + local_as + as_path_list
-
-	validate_call(&rm.Proxy, output_string)
-	rm.Updates = append(rm.Updates, &update)
+	for _, str := range updates_to_send {
+		log.Debug("Validation message: ", str)
+		validate_call(&rm.Proxy, str)
+	}
 }
 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
@@ -209,7 +201,7 @@ func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	rm := &rpkiManager{
 		AS:      int(s.bgpConfig.Global.Config.As),
 		Server:  s,
-		Proxy:   createProxy(),
+		Proxy:   createSRxProxy(),
 		ID:      1,
 		Updates: make([]*srx_update, 0),
 	}
