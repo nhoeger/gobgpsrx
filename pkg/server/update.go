@@ -1,6 +1,10 @@
 package server
 
-import "github.com/osrg/gobgp/pkg/packet/bgp"
+import (
+	"time"
+
+	"github.com/osrg/gobgp/pkg/packet/bgp"
+)
 
 type srx_update struct {
 	srx_id   string
@@ -12,4 +16,5 @@ type srx_update struct {
 	origin   int
 	aspa     int
 	ascones  int
+	time     time.Time
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	//_ "github.com/osrg/gobgp/table"
 	_ "os"
@@ -70,6 +71,7 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 				}
 				if result == "00" {
 					log.Debug("Adding Update")
+					log.Debug("Time needed: ", time.Since(update.time))
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					log.Info("+----------------------------------------+")
@@ -111,8 +113,8 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 			origin:   2,
 			aspa:     2,
 			ascones:  2,
+			time:     time.Now(),
 		}
-		rm.ID++
 		vm := VerifyMessage{
 			PDU:                   "03",
 			OriginResultSoruce:    "01",
@@ -141,14 +143,12 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 			local_as:              "00000000",
 			as_path_list:          "",
 		}
-		log.Info(vm)
 		if aspa {
 			vm.Flags = "84"
 		} else {
 			vm.Flags = "00"
 		}
 		as_list := path.GetAsList()
-		log.Info("AS path list:   ", as_list)
 		for _, asn := range as_list {
 			hexValue := fmt.Sprintf("%08X", asn)
 			vm.as_path_list += hexValue
@@ -170,32 +170,30 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 		tmp := hex.EncodeToString(prefix_addr)
 		vm.prefix = tmp[len(tmp)-8:]
 		vm.prefix_len = strconv.FormatInt(int64(prefix_len), 16)
-		//local_as = fmt.Sprintf("%08X", rm.AS)
-		//log.Debug("local AS:       ", local_as)
-		log.Debug("address:        ", vm.prefix)
-		log.Debug("size:           ", vm.prefix_len)
 		vm.origin_AS = fmt.Sprintf("%08X", as_list[len(as_list)-1])
-		//log.Info("Origin AS: ", origin_as)
 		vm.num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
 		tmp_int := 4 * path.GetAsPathLen()
 		vm.Length = fmt.Sprintf("%08X", 60+tmp_int)
 		vm.length_path_val_data = fmt.Sprintf("%08X", tmp_int)
 		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
-		log.Debug("number of hops: ", vm.num_of_hops)
-		log.Debug("Source AS:      ", vm.origin_AS)
-		log.Debug("length:         ", vm.Length)
-		log.Debug("length val data:", vm.length_path_val_data)
+
+		if log.GetLevel() == log.DebugLevel {
+			printValMessage(vm)
+		}
 		updates_to_send = append(updates_to_send, structToString(vm))
 		rm.Updates = append(rm.Updates, &update)
+		rm.ID++
 	}
 
 	for _, str := range updates_to_send {
-		log.Debug("Validation message: ", str)
 		validate_call(&rm.Proxy, str)
 	}
 }
 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
+	if log.GetLevel() == log.DebugLevel {
+		log.Info("DEEEEbug")
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	rm := &rpkiManager{
@@ -206,6 +204,7 @@ func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 		Updates: make([]*srx_update, 0),
 	}
 	go proxyBackgroundThread(rm, &wg)
+
 	return rm, nil
 }
 
@@ -230,4 +229,38 @@ func (rm *rpkiManager) SetAS(as uint32) error {
 	}
 	rm.AS = int(as)
 	return nil
+}
+
+func printValMessage(vm VerifyMessage) {
+	log.Debug("+----------------------------------+")
+	log.Debug("PDU:                   ", vm.PDU)
+	log.Debug("Flags:                 ", vm.Flags)
+	log.Debug("OriginResultSoruce:    ", vm.OriginResultSoruce)
+	log.Debug("PathResultSoruce:      ", vm.PathResultSoruce)
+	log.Debug("ASPAResultSoruce:      ", vm.ASPAResultSoruce)
+	log.Debug("reserved:              ", vm.reserved)
+	log.Debug("ASPathType:            ", vm.ASPathType)
+	log.Debug("ASRelationType:        ", vm.ASRelationType)
+	log.Debug("Length:                ", vm.Length)
+	log.Debug("origin_default_result: ", vm.origin_default_result)
+	log.Debug("path_default_result:   ", vm.path_default_result)
+	log.Debug("aspa_default_result:   ", vm.aspa_default_result)
+	log.Debug("prefix_len:            ", vm.prefix_len)
+	log.Debug("request_token:         ", vm.request_token)
+	log.Debug("prefix:                ", vm.prefix)
+	log.Debug("origin_AS:             ", vm.origin_AS)
+	log.Debug("length_path_val_data:  ", vm.length_path_val_data)
+	log.Debug("num_of_hops:           ", vm.num_of_hops)
+	log.Debug("bgpsec_length:         ", vm.bgpsec_length)
+	log.Debug("afi:                   ", vm.afi)
+	log.Debug("safi:                  ", vm.safi)
+	log.Debug("prefix_len_bgpsec:     ", vm.prefix_len_bgpsec)
+	log.Debug("ip_pre_add_byte_a:     ", vm.ip_pre_add_byte_a)
+	log.Debug("ip_pre_add_byte_b:     ", vm.ip_pre_add_byte_b)
+	log.Debug("ip_pre_add_byte_c:     ", vm.ip_pre_add_byte_c)
+	log.Debug("ip_pre_add_byte_d:     ", vm.ip_pre_add_byte_d)
+	log.Debug("local_as:              ", vm.local_as)
+	log.Debug("as_path_list:          ", vm.as_path_list)
+	log.Debug("path_attribute:        ", vm.path_attribute)
+	log.Debug("+----------------------------------+")
 }
