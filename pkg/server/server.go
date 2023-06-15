@@ -38,7 +38,7 @@ import (
 	"github.com/osrg/gobgp/pkg/packet/bgp"
 )
 
-var gl_bgpsecManager *bgpsecManager
+//var gl_bgpsecManager *bgpsecManager
 
 type tcpListener struct {
 	l  *net.TCPListener
@@ -120,25 +120,25 @@ func GrpcOption(opt []grpc.ServerOption) ServerOption {
 }
 
 type BgpServer struct {
-	bgpConfig     config.Bgp
-	acceptCh      chan *net.TCPConn
-	incomings     []*channels.InfiniteChannel
-	mgmtCh        chan *mgmtOp
-	policy        *table.RoutingPolicy
-	listeners     []*tcpListener
-	neighborMap   map[string]*peer
-	peerGroupMap  map[string]*peerGroup
-	globalRib     *table.TableManager
-	rsRib         *table.TableManager
-	roaManager    *roaManager
-	shutdownWG    *sync.WaitGroup
-	watcherMap    map[watchEventType][]*watcher
-	zclient       *zebraClient
-	bmpManager    *bmpClientManager
-	mrtManager    *mrtManager
-	roaTable      *table.ROATable
-	uuidMap       map[string]uuid.UUID
-	bgpsecManager *bgpsecManager
+	bgpConfig    config.Bgp
+	acceptCh     chan *net.TCPConn
+	incomings    []*channels.InfiniteChannel
+	mgmtCh       chan *mgmtOp
+	policy       *table.RoutingPolicy
+	listeners    []*tcpListener
+	neighborMap  map[string]*peer
+	peerGroupMap map[string]*peerGroup
+	globalRib    *table.TableManager
+	rsRib        *table.TableManager
+	roaManager   *roaManager
+	shutdownWG   *sync.WaitGroup
+	watcherMap   map[watchEventType][]*watcher
+	zclient      *zebraClient
+	bmpManager   *bmpClientManager
+	mrtManager   *mrtManager
+	roaTable     *table.ROATable
+	uuidMap      map[string]uuid.UUID
+	//bgpsecManager *bgpsecManager
 	rpkiManager   *rpkiManager
 	updateManager *updateManager
 }
@@ -149,24 +149,24 @@ func NewBgpServer(opt ...ServerOption) *BgpServer {
 		o(&opts)
 	}
 	roaTable := table.NewROATable()
-	bgpsecManager, _ := NewBgpsecManager(0)
+	//bgpsecManager, _ := NewBgpsecManager(0)
 	updateManager := createUpdateManager()
 	s := &BgpServer{
-		neighborMap:   make(map[string]*peer),
-		peerGroupMap:  make(map[string]*peerGroup),
-		policy:        table.NewRoutingPolicy(),
-		mgmtCh:        make(chan *mgmtOp, 1),
-		watcherMap:    make(map[watchEventType][]*watcher),
-		uuidMap:       make(map[string]uuid.UUID),
-		roaManager:    newROAManager(roaTable),
-		roaTable:      roaTable,
-		bgpsecManager: bgpsecManager,
+		neighborMap:  make(map[string]*peer),
+		peerGroupMap: make(map[string]*peerGroup),
+		policy:       table.NewRoutingPolicy(),
+		mgmtCh:       make(chan *mgmtOp, 1),
+		watcherMap:   make(map[watchEventType][]*watcher),
+		uuidMap:      make(map[string]uuid.UUID),
+		roaManager:   newROAManager(roaTable),
+		roaTable:     roaTable,
+		//bgpsecManager: bgpsecManager,
 		updateManager: &updateManager,
 	}
 	s.rpkiManager, _ = NewRPKIManager(s)
 	s.bmpManager = newBmpClientManager(s)
 	s.mrtManager = newMrtManager(s)
-	gl_bgpsecManager = bgpsecManager
+	//gl_bgpsecManager = bgpsecManager
 	if len(opts.grpcAddress) != 0 {
 		grpc.EnableTracing = false
 		api := newAPIserver(s, grpc.NewServer(opts.grpcOption...), opts.grpcAddress)
@@ -663,10 +663,10 @@ func (s *BgpServer) prePolicyFilterpath(peer *peer, path, old *table.Path) (*tab
 				path.BgpsecEnable = true
 			}
 		}
-		if path.BgpsecEnable == true {
-			log.Debug("bgpsecManager: ", peer.bgpserver.bgpsecManager)
+		/*if path.BgpsecEnable == true {
+			//log.Debug("bgpsecManager: ", peer.bgpserver.bgpsecManager)
 			UpdateBgpsecPathAttr(path, peer.fsm.pConf)
-		}
+		}*/
 	}
 
 	return path, options, false
@@ -1617,9 +1617,9 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 }
 
 func (s *BgpServer) ProcessValidUpdate(peer *peer, e *fsmMsg, m *bgp.BGPMessage) {
-	if peer.fsm.pConf.Config.BgpsecEnable {
+	/*if peer.fsm.pConf.Config.BgpsecEnable {
 		s.bgpsecManager.validate(e)
-	}
+	}*/
 	pathList, eor, notification := peer.handleUpdate(e)
 	if notification != nil {
 		sendfsmOutgoingMsg(peer, nil, notification, true)
@@ -2182,9 +2182,9 @@ func (s *BgpServer) StartBgp(ctx context.Context, r *api.StartBgpRequest) error 
 		table.SelectionOptions = c.RouteSelectionOptions.Config
 		table.UseMultiplePaths = c.UseMultiplePaths.Config
 		s.rpkiManager.SetAS(s.bgpConfig.Global.Config.As)
-		s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
+		/*s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetKeyPath(s.bgpConfig.Global.Config.KeyPath)
-		s.bgpsecManager.BgpsecInit(s.bgpConfig.Global.Config.KeyPath)
+		s.bgpsecManager.BgpsecInit(s.bgpConfig.Global.Config.KeyPath)*/
 
 		return nil
 	}, false)
@@ -4268,10 +4268,10 @@ func (s *BgpServer) GenerateBgpsecPathAttr(p *bgp.PathAttributeBgpsec) error {
 	return nil
 }
 */
-
+/*
 func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 	/* bgpsec path attr add */
-
+/*
 	var prefix_addr net.IP
 	var prefix_len uint8
 	var nlri_afi uint16
@@ -4427,14 +4427,14 @@ func UpdateBgpsecPathAttr(path *table.Path, peer *config.Neighbor) {
 		}
 	}
 	/* TODO: for bgpsec, remove nlri */
-	/*
-		p := path
-		if p.info == nil {
-			p = p.parent
-		}
-		if p.info != nil {
-			p.info.nlri = nil
-		}
-	*/
-
-}
+/*
+	p := path
+	if p.info == nil {
+		p = p.parent
+	}
+	if p.info != nil {
+		p.info.nlri = nil
+	}
+*/
+/*
+}*/
