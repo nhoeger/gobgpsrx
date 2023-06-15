@@ -11,5 +11,4 @@ COPY . .
 RUN go install ./...
 
 # Setze den Befehl, der beim Ausführen des Containers ausgeführt werden soll
-#COPY /pfad/zur/konfiguration/gobgp.conf /go/src/github.com/osrg/gobgp/
 CMD ["/go/bin/gobgpd", "-f", "gobgp.conf"]
