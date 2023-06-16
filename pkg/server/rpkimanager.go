@@ -25,43 +25,41 @@ type rpkiManager struct {
 }
 
 func handleVerifyNotify(input string, rm rpkiManager) {
-	//log.Info("+----------------------------------------+")
-	//log.Info("In verification callback function.")
-	log.Info(input)
+	//log.Debug("+----------------------------------------+")
+	//log.Debug("In verification callback function.")
+	log.Debug(input)
 	result_type := input[2:4]
 	update_identifer := input[len(input)-8:]
 	request_token := input[len(input)-16 : len(input)-8]
 	result := input[8:10]
 	//	if result != "00" {
-	//		log.Info("Not a valid update")
+	//		log.Debug("Not a valid update")
 	//	return
 	//}
-	log.Info("+----------------------------------------+")
-	log.Info("Update identifier: ", update_identifer)
-	log.Info("Request Token:     ", request_token)
-	log.Info("Cached Updates:    ", len(rm.Updates))
-	log.Info("Result before:     ", result)
+	log.Debug("+----------------------------------------+")
+	log.Debug("Update identifier: ", update_identifer)
+	log.Debug("Request Token:     ", request_token)
+	log.Debug("Cached Updates:    ", len(rm.Updates))
+	log.Debug("Result before:     ", result)
 	for i, update := range rm.Updates {
-		log.Info("ID:    ", update.local_id)
-		log.Info("SRx-ID:", update.srx_id)
+		log.Debug("ID:    ", update.local_id)
+		log.Debug("SRx-ID:", update.srx_id)
 		loc_ID := fmt.Sprintf("%08X", update.local_id)
 
 		//log.Debug("local ID (dez):    ", update.local_id)
-		//log.Info("Reqeust Token:     ", request_token)
-		//log.Info("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
+		//log.Debug("Reqeust Token:     ", request_token)
+		//log.Debug("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
 		if strings.ToLower(loc_ID) == strings.ToLower(request_token) {
-			log.Info("Path for Update:   ", update.fsmMsg.PathList)
-			log.Info("In if Statement")
-			log.Info("Changing Srx ID of update")
+			log.Debug("Path for Update:   ", update.fsmMsg.PathList)
+			log.Debug("In if Statement")
+			log.Debug("Changing Srx ID of update")
 			update.srx_id = update_identifer
-			log.Info("srx ID:            ", update.srx_id)
-			log.Info("+----------------------------------------+")
+			log.Debug("srx ID:            ", update.srx_id)
+			log.Debug("+----------------------------------------+")
 			return
 		}
 
 		if update.srx_id == update_identifer {
-			log.Info("Path for Update:   ", update.fsmMsg.PathList)
-			log.Info("Result in if: ", result)
 			if result_type == "04" {
 				log.Debug("Received new information for aspa validation.")
 				num, err := strconv.ParseInt(result[1:], 10, 64)
@@ -74,21 +72,17 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 					log.Debug("Time needed: ", time.Since(update.time))
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
-					log.Info("+----------------------------------------+")
+					update.aspa = int(num)
 					return
-				}
-				if result == "02" {
-					log.Info("Invalid Update detected")
+				} else {
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
-					log.Info("+----------------------------------------+")
 					return
 				}
-				update.aspa = int(num)
 			}
 		}
 
 	}
-	log.Info("+----------------------------------------+")
+	//o("+----------------------------------------+")
 }
 
 // Server send Sync message and Proxy responds with all cached updates
@@ -103,6 +97,7 @@ func (rm *rpkiManager) handleSyncCallback() {
 func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa bool, ascones bool) {
 	var updates_to_send []string
 	for _, path := range e.PathList {
+		//log.Debug("PAAATH: ", path)
 		update := srx_update{
 			local_id: rm.ID,
 			srx_id:   "",
@@ -149,6 +144,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 			vm.Flags = "00"
 		}
 		as_list := path.GetAsList()
+		//log.Debug("AS LISST: ", as_list)
 		for _, asn := range as_list {
 			hexValue := fmt.Sprintf("%08X", asn)
 			vm.as_path_list += hexValue
@@ -182,7 +178,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 		}
 		updates_to_send = append(updates_to_send, structToString(vm))
 		rm.Updates = append(rm.Updates, &update)
-		rm.ID++
+		rm.ID = (rm.ID % 10000) + 1
 	}
 
 	for _, str := range updates_to_send {
@@ -192,7 +188,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	if log.GetLevel() == log.DebugLevel {
-		log.Info("DEEEEbug")
+		log.Debug("DEEEEbug")
 	}
 	var wg sync.WaitGroup
 	wg.Add(1)

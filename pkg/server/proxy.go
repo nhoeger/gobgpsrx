@@ -119,7 +119,7 @@ func createSRxProxy() Go_Proxy {
 }
 
 func connectToSrxServer() net.Conn {
-	server := "localhost:17900"
+	server := "172.17.0.1:17900"
 	conn, err := net.Dial("tcp", server)
 	if err != nil {
 		log.Fatal("Connection to Server failed!")

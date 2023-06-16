@@ -11,4 +11,4 @@ COPY . .
 RUN go install ./...
 
 # Setze den Befehl, der beim Ausführen des Containers ausgeführt werden soll
-CMD ["/go/bin/gobgpd", "-f", "gobgp.conf"]
+CMD ["/go/bin/gobgpd", "-f", "gobgp.conf" , "> output.txt"]
