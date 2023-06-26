@@ -629,6 +629,9 @@ func NewGlobalFromConfigStruct(c *Global) *api.Global {
 	return &api.Global{
 		As:               c.Config.As,
 		RouterId:         c.Config.RouterId,
+		SRxServer:        c.Config.SRxServer,
+		ASPA:             c.Config.ASPA,
+		ASCONES:          c.Config.ASCONES,
 		ListenPort:       c.Config.Port,
 		ListenAddresses:  c.Config.LocalAddressList,
 		KeyPath:          c.Config.KeyPath,

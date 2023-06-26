@@ -4837,7 +4837,7 @@ type GlobalConfig struct {
 	// the 32-bit as-number type from the model in RFC 6991.
 	As uint32 `mapstructure:"as" json:"as,omitempty"`
 	// original -> bgp:router-id
-	// bgp:router-id's original type is inet:ipv4-address.
+	// bgp:router-id's original type is inet:ipv4-address.^
 	// Router id of the router, expressed as an
 	// 32-bit value, IPv4 address.
 	RouterId string `mapstructure:"router-id" json:"router-id,omitempty"`
@@ -4845,7 +4845,9 @@ type GlobalConfig struct {
 	Port int32 `mapstructure:"port" json:"port,omitempty"`
 	// original -> gobgp:local-address
 	LocalAddressList []string `mapstructure:"local-address-list" json:"local-address-list,omitempty"`
-
+	SRxServer string `mapstructure:"SRxServer" json:"SRxServer,omitempty"`
+	ASPA bool `mapstructure:"ASPA" json:"ASPA,omitempty"`
+	ASCONES bool `mapstructure:"ASCONES" json:"ASCONES,omitempty"`
 	KeyPath string `mapstructure:"key-path" json:"key-path,omitempty"`
 }
 
@@ -4860,6 +4862,9 @@ func (lhs *GlobalConfig) Equal(rhs *GlobalConfig) bool {
 		return false
 	}
 	if lhs.Port != rhs.Port {
+		return false
+	}
+	if lhs.SRxServer != rhs.SRxServer {
 		return false
 	}
 	if len(lhs.LocalAddressList) != len(rhs.LocalAddressList) {

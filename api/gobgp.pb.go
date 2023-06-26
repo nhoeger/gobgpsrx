@@ -5329,6 +5329,9 @@ type Global struct {
 	GracefulRestart       *GracefulRestart             `protobuf:"bytes,10,opt,name=graceful_restart,json=gracefulRestart" json:"graceful_restart,omitempty"`
 	ApplyPolicy           *ApplyPolicy                 `protobuf:"bytes,11,opt,name=apply_policy,json=applyPolicy" json:"apply_policy,omitempty"`
 	KeyPath               string                       `protobuf:"bytes,12,opt,name=KeyPath" json:"KeyPath,omitempty"`
+	SRxServer				string  `protobuf:"bytes,13,opt,name=SRxServer" json:"SRxServer,omitempty"`
+	ASPA bool `protobuf:"varint,6,opt,name=ASPA,json=ASPA"`
+	ASCONES bool `protobuf:"varint,6,opt,name=ASCONES,json=ASCONES"`
 }
 
 func (m *Global) Reset()                    { *m = Global{} }

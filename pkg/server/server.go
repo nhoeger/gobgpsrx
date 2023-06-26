@@ -1594,7 +1594,7 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			sendfsmOutgoingMsg(peer, nil, bgp.NewBGPNotificationMessage(m.TypeCode, m.SubTypeCode, m.Data), false)
 			return
 		case *bgp.BGPMessage:
-			log.Info("Received an Update. Starting to extract the information.")
+			//log.Info("Received an Update. Starting to extract the information.")
 			s.notifyRecvMessageWatcher(peer, e.timestamp, m)
 			peer.fsm.lock.RLock()
 			notEstablished := peer.fsm.state != bgp.BGP_FSM_ESTABLISHED
@@ -2182,10 +2182,10 @@ func (s *BgpServer) StartBgp(ctx context.Context, r *api.StartBgpRequest) error 
 		table.SelectionOptions = c.RouteSelectionOptions.Config
 		table.UseMultiplePaths = c.UseMultiplePaths.Config
 		s.rpkiManager.SetAS(s.bgpConfig.Global.Config.As)
+		s.rpkiManager.SetSRxServer(s.bgpConfig.Global.Config.SRxServer)
 		s.bgpsecManager.SetAS(s.bgpConfig.Global.Config.As)
 		s.bgpsecManager.SetKeyPath(s.bgpConfig.Global.Config.KeyPath)
 		s.bgpsecManager.BgpsecInit(s.bgpConfig.Global.Config.KeyPath)
-
 		return nil
 	}, false)
 }
@@ -2747,6 +2747,9 @@ func (s *BgpServer) GetBgp(ctx context.Context, r *api.GetBgpRequest) (*api.GetB
 		rsp = &api.GetBgpResponse{
 			Global: &api.Global{
 				As:               g.Config.As,
+				SRxServer:        g.Config.SRxServer,
+				ASPA:             g.Config.ASPA,
+				ASCONES:          g.Config.ASCONES,
 				RouterId:         g.Config.RouterId,
 				ListenPort:       g.Config.Port,
 				ListenAddresses:  g.Config.LocalAddressList,

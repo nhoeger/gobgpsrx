@@ -18,11 +18,6 @@ const (
 	SyncMessage       = "0a000000000000000000000c"
 )
 
-type Verification_Request struct {
-	PDU [1]byte
-	//TODO: extend
-}
-
 type VerifyMessage struct {
 	PDU                   string
 	Flags                 string
@@ -63,7 +58,6 @@ type HelloMessage struct {
 	length           string
 	proxy_identifier string
 	ASN              string
-	//number_peers     [4]byte
 }
 
 type Go_Proxy struct {
@@ -76,7 +70,6 @@ type Go_Proxy struct {
 }
 
 func validate_call(proxy *Go_Proxy, input string) {
-	//proxy.InputBuffer = append(proxy.InputBuffer, input)
 	connection := proxy.con
 	bytes2, err := hex.DecodeString(input)
 	_, err = connection.Write(bytes2)
@@ -105,10 +98,10 @@ func sendHello(proxy Go_Proxy) {
 	}
 }
 
-func createSRxProxy() Go_Proxy {
+func createSRxProxy(ip string) Go_Proxy {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	tmp := connectToSrxServer()
+	tmp := connectToSrxServer(ip)
 	pr := Go_Proxy{
 		con:        tmp,
 		ASN:        0,
@@ -118,8 +111,12 @@ func createSRxProxy() Go_Proxy {
 	return pr
 }
 
-func connectToSrxServer() net.Conn {
+func connectToSrxServer(ip string) net.Conn {
+	log.Debug("SRxServer Address: ", ip)
 	server := "localhost:17900"
+	if len(ip) != 0 {
+		server = ip + ":17900"
+	}
 	conn, err := net.Dial("tcp", server)
 	if err != nil {
 		log.Fatal("Connection to Server failed!")
@@ -155,10 +152,10 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 				bytes, err1 := hex.DecodeString(rm.Proxy.InputBuffer[0])
 				_, err2 := con.Write(bytes)
 				if err1 != nil {
-					log.Info("Error 1: ", err1)
+					log.Fatal("Cannot Convert Message: ", err1)
 				}
 				if err2 != nil {
-					log.Info("Error 2: ", err2)
+					log.Fatal("Cannot Write Bytes: ", err2)
 				}
 				rm.Proxy.InputBuffer = rm.Proxy.InputBuffer[1:]
 			}
@@ -170,7 +167,6 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 
 func processInput(rm *rpkiManager, st string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	log.Debug("Processing")
 	elem := st
 	if elem[:2] == "01" {
 		log.Debug("Received Hello Response")
