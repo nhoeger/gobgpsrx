@@ -26,25 +26,35 @@ type rpkiManager struct {
 	Resets    int
 }
 
+// Callback function: The proxy can call this function when the SRx-Server sends a verify notify
+// Input is a raw string containing the message from the server and a pointer to the rpkimanager
 func handleVerifyNotify(input string, rm rpkiManager) {
 	log.Debug(input)
+
+	// result type (ASPA, AS-Cones, ..) from the SRx-Server
 	result_type := input[2:4]
+
+	// ID assigned by the SRx-Server
 	update_identifer := input[len(input)-8:]
+
+	// Token assigned by the RPKI manager
 	request_token := input[len(input)-16 : len(input)-8]
+
+	// Actual validation result 
 	result := input[8:10]
 	log.Debug("+----------------------------------------+")
 	log.Debug("Update identifier: ", update_identifer)
 	log.Debug("Request Token:     ", request_token)
 	log.Debug("Cached Updates:    ", len(rm.Updates))
 	log.Debug("Result before:     ", result)
+
+	// Iterating through all stores updates to find the matching one 
 	for i, update := range rm.Updates {
 		log.Debug("ID:    ", update.local_id)
 		log.Debug("SRx-ID:", update.srx_id)
 		loc_ID := fmt.Sprintf("%08X", update.local_id)
 
-		//log.Debug("local ID (dez):    ", update.local_id)
-		//log.Debug("Reqeust Token:     ", request_token)
-		//log.Debug("local ID (hex):    ", fmt.Sprintf("%08X", update.local_id))
+		// Found the correct update -> set SRxID 
 		if strings.ToLower(loc_ID) == strings.ToLower(request_token) {
 			log.Debug("Path for Update:   ", update.fsmMsg.PathList)
 			log.Debug("In if Statement")
@@ -55,6 +65,7 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 			return
 		}
 
+		// Found the matching token -> process result
 		if update.srx_id == update_identifer {
 			log.Debug("Result for update: ", result)
 			if result_type == "04" {
@@ -65,8 +76,12 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 					fmt.Println("Conversion error:", err)
 					return
 				}
+
+				// Valid update
 				if result == "00" {
 					log.Debug("Adding Update")
+
+					// Process the BGP update 
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					update.aspa = int(num)
@@ -90,9 +105,14 @@ func (rm *rpkiManager) handleSyncCallback() {
 	}
 }
 
-func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa bool, ascones bool) {
+// Create a Validation message for an incoming BGP UPDATE message
+// inputs: BGP peer, the message and messag data
+func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	var updates_to_send []string
+
+	// Iterate through all paths inside the BGP UPDATE message
 	for _, path := range e.PathList {
+		// Create new SRxUpdate for each path
 		update := srx_update{
 			local_id: rm.ID,
 			srx_id:   "",
@@ -105,6 +125,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 			ascones:  2,
 			time:     time.Now(),
 		}
+		// Create new message for each path
 		vm := VerifyMessage{
 			PDU:                   "03",
 			OriginResultSoruce:    "01",
@@ -184,19 +205,18 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 		updates_to_send = append(updates_to_send, structToString(vm))
 		rm.Updates = append(rm.Updates, &update)
 		rm.ID = (rm.ID % 10000) + 1
-		if rm.ID >= 10000 {
-			rm.ID = 1
-			rm.Resets += 1
-		}
 
 		log.Info("Total Updates:", rm.ID, "/", rm.Resets)
 	}
 
+	// call proxy function to send message to SRx-Server for each update path
 	for _, str := range updates_to_send {
 		validate_call(&rm.Proxy, str)
 	}
 }
 
+// Create new RPKI manager instance 
+// Input: pointer to BGPServer 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	rm := &rpkiManager{
 		AS:        int(s.bgpConfig.Global.Config.As),
@@ -220,6 +240,9 @@ func (rm *rpkiManager) SetServer(s *BgpServer) error {
 	return nil
 }
 
+// Parses the IP address of the SRx-Server
+// Proxy can establish a connection with the SRx-Server and sends a hello message 
+// Thread mandatory to keep proxy alive during runtime 
 func (rm *rpkiManager) SetSRxServer(ip string) error {
 	var wg sync.WaitGroup
 	wg.Add(1)

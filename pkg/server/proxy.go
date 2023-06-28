@@ -69,6 +69,7 @@ type Go_Proxy struct {
 	lastCall     time.Time
 }
 
+// send validation call to SRx-Server
 func validate_call(proxy *Go_Proxy, input string) {
 	connection := proxy.con
 	bytes2, err := hex.DecodeString(input)
@@ -79,6 +80,9 @@ func validate_call(proxy *Go_Proxy, input string) {
 
 }
 
+
+// Sends Hello message to SRx-Server
+// ASN becomes the identifier of the proxy 
 func sendHello(proxy Go_Proxy) {
 	hm := HelloMessage{
 		PDU:              "00",
@@ -98,6 +102,7 @@ func sendHello(proxy Go_Proxy) {
 	}
 }
 
+// New Proxy instance 
 func createSRxProxy(ip string) Go_Proxy {
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -111,6 +116,8 @@ func createSRxProxy(ip string) Go_Proxy {
 	return pr
 }
 
+// Establish a TCP connection with the SRx-Server
+// If no IP is privided, the proxy tries to reach localhost:17900
 func connectToSrxServer(ip string) net.Conn {
 	log.Debug("SRxServer Address: ", ip)
 	server := "localhost:17900"
@@ -165,6 +172,7 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	}
 }
 
+// process messages from the SRx-Server according to their PDU field 
 func processInput(rm *rpkiManager, st string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	elem := st

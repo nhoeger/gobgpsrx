@@ -1603,8 +1603,8 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			s.rpkiManager.validate(peer, m, e, true, true)
-			//s.rpkiManager.validate(e,false,true)
+			// Update processing set on hold until the validation with the SRx-Server was successfull 
+			s.rpkiManager.validate(peer, m, e)
 			return
 		}
 	default:
@@ -1616,6 +1616,8 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 	}
 }
 
+// RPKI manager parses each valdiated update to this function 
+// Original Code of GoBGPsec
 func (s *BgpServer) ProcessValidUpdate(peer *peer, e *fsmMsg, m *bgp.BGPMessage) {
 	if peer.fsm.pConf.Config.BgpsecEnable {
 		s.bgpsecManager.validate(e)
