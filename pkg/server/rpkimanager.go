@@ -17,11 +17,13 @@ import (
 )
 
 type rpkiManager struct {
-	AS      int
-	ID      int
-	Proxy   Go_Proxy
-	Server  *BgpServer
-	Updates []*srx_update
+	AS        int
+	ID        int
+	Proxy     Go_Proxy
+	Server    *BgpServer
+	Updates   []*srx_update
+	StartTime time.Time
+	Resets    int
 }
 
 func handleVerifyNotify(input string, rm rpkiManager) {
@@ -131,7 +133,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 			local_as:              fmt.Sprintf("%08X", rm.AS),
 			as_path_list:          "",
 		}
-		log.Info(fmt.Sprintf("%08X", rm.AS))
+		log.Info("Time since Start:", time.Since(rm.StartTime))
 		if rm.Server.bgpConfig.Global.Config.ASPA {
 			log.Debug("ASPA")
 			vm.Flags = "84"
@@ -182,6 +184,12 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 		updates_to_send = append(updates_to_send, structToString(vm))
 		rm.Updates = append(rm.Updates, &update)
 		rm.ID = (rm.ID % 10000) + 1
+		if rm.ID >= 10000 {
+			rm.ID = 1
+			rm.Resets += 1
+		}
+
+		log.Info("Total Updates:", rm.ID, "/", rm.Resets)
 	}
 
 	for _, str := range updates_to_send {
@@ -191,10 +199,12 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg, aspa b
 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	rm := &rpkiManager{
-		AS:      int(s.bgpConfig.Global.Config.As),
-		Server:  s,
-		ID:      1,
-		Updates: make([]*srx_update, 0),
+		AS:        int(s.bgpConfig.Global.Config.As),
+		Server:    s,
+		ID:        1,
+		Updates:   make([]*srx_update, 0),
+		StartTime: time.Now(),
+		Resets:    0,
 	}
 	return rm, nil
 }
