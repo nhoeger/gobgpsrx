@@ -1,6 +1,6 @@
 
 
-# Configuration for using NIST SRxCryptoAPI library of BGPSec Protocol
+# Configuration for using NIST SRxCryptoAPI library of BGPSec Protocol and Go Proxy 
 
 
 1. To enable BGPSec validation and signing features on gobgp, There are three necessary 
@@ -29,6 +29,9 @@
   as = <as number>
   router-id = <address string>
   key-path = /path/to/keys
+  SRxServer = "172.17.0.2"
+  ASPA = true
+  ASCONES = false
   # (example) key-path = "/var/lib/bgpsec-keys/"
 
 [[neighbors]]
