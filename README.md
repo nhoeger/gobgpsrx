@@ -52,24 +52,17 @@ please refer to [NIST SRxCryptoAPI](https://github.com/usnistgov/NIST-BGP-SRx/tr
 To import NIST SRxCryptoAPI library, need to specify the library location with a build or
 install command. Otherwise LD_LIBRARY_PATH environment variable might be used.
 ```bash
-LD_LIBRARY_PATH=/path/to/lib go build [source|./...]                    
-go build ./...
-```
-Or 
-```
-go build -ldflags="-r /path/to/lib/go_srx_test" ./...
-```
 
 
 Avoiding the LD_LIBRARY_PATH for Shared Libs in Go (cgo) Applications   
 ```
-export CGO_LDFLAGS="-L/path/to/lib -Wl,-rpath -Wl,/path/to/lib"
-export CGO_CFLAGS="-I/path/to/include/"
-go build ./...
+export CGO_LDFLAGS="-L/path/to/lib64/srx -Wl,-rpath -Wl,/path/to/lib64/srx"
+
 ```
 
 
 ### Install
+To Install on Localhost: Replace /root/... path in bgpsec.go with paths on localhosts 
 Install binaries into $GOPATH/bin. Simply use 'install' instead of 'build' in commands
 ```
 go install ./...

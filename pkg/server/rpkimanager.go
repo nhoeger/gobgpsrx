@@ -101,7 +101,7 @@ func (rm *rpkiManager) handleSyncCallback() {
 	log.Debug("in sync callback function")
 	for _, Updates := range rm.Updates {
 		log.Debug("Requesting Validation for Update ", Updates.local_id)
-		rm.validate(Updates.peer, Updates.bgpMsg, Updates.fsmMsg, true, false)
+		rm.validate(Updates.peer, Updates.bgpMsg, Updates.fsmMsg)
 	}
 }
 
