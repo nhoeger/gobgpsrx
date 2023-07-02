@@ -215,7 +215,6 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	}
 }
 
-// VS Code Test
 // Create new RPKI manager instance 
 // Input: pointer to BGPServer 
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
