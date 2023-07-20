@@ -12,6 +12,7 @@
 // implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//go:build !linux && !openbsd
 // +build !linux,!openbsd
 
 package server
@@ -28,7 +29,8 @@ func setTCPMD5SigSockopt(l *net.TCPListener, address string, key string) error {
 }
 
 func setListenTCPTTLSockopt(l *net.TCPListener, ttl int) error {
-	return setListenTcpTTLSockopt(l, ttl)
+	//return setListenTcpTTLSockopt(l, ttl)
+	return nil
 }
 
 func setTCPTTLSockopt(conn *net.TCPConn, ttl int) error {

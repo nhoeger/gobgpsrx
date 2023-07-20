@@ -62,6 +62,7 @@ type HelloMessage struct {
 
 type Go_Proxy struct {
 	con          net.Conn
+	conStatus    bool
 	ASN          int
 	Identifier   int
 	InputBuffer  []string
@@ -80,9 +81,8 @@ func validate_call(proxy *Go_Proxy, input string) {
 
 }
 
-
 // Sends Hello message to SRx-Server
-// ASN becomes the identifier of the proxy 
+// ASN becomes the identifier of the proxy
 func sendHello(proxy Go_Proxy) {
 	hm := HelloMessage{
 		PDU:              "00",
@@ -102,33 +102,58 @@ func sendHello(proxy Go_Proxy) {
 	}
 }
 
-// New Proxy instance 
+// New Proxy instance
 func createSRxProxy(ip string) Go_Proxy {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	tmp := connectToSrxServer(ip)
 	pr := Go_Proxy{
-		con:        tmp,
 		ASN:        0,
 		Identifier: 65001,
 	}
+	pr.connectToSrxServer(ip)
 	sendHello(pr)
 	return pr
 }
 
 // Establish a TCP connection with the SRx-Server
-// If no IP is privided, the proxy tries to reach localhost:17900
-func connectToSrxServer(ip string) net.Conn {
-	log.Debug("SRxServer Address: ", ip)
+// If no IP is provided, the proxy tries to reach localhost:17900
+func (proxy *Go_Proxy) connectToSrxServer(ip string) {
+	connectionCounter := 1
 	server := "localhost:17900"
+	log.Debug("Trying to connect to SRx-Server. Try Nr.: ", connectionCounter)
+	log.Debug("SRxServer Address: ", ip)
 	if len(ip) != 0 {
 		server = ip + ":17900"
 	}
-	conn, err := net.Dial("tcp", server)
-	if err != nil {
-		log.Fatal("Connection to Server failed!")
+	var conn net.Conn
+	var err error
+	for connectionCounter < 4 {
+		connectionCounter += 1
+		conn, err = net.Dial("tcp", server)
+		if err != nil {
+			log.Debug("Connection to Server failed! Trying to connect...")
+			time.Sleep(2 * time.Second)
+		} else {
+			log.Debug("TCP Connection Established")
+			proxy.con = conn
+			proxy.conStatus = true
+			break
+		}
 	}
-	return conn
+	if err != nil {
+		log.Fatal("Connection Failed. Please ensure that the SRx-Server is running.")
+	}
+}
+
+func (proxy *Go_Proxy) connectionStatus() bool {
+	conn := proxy.con
+	_, err := conn.Write([]byte("Ping"))
+	if err != nil {
+		log.Debug("Lost TCP Connection:", err)
+		return false
+	}
+	log.Debug("TCP Connection still active.")
+	return true
 }
 
 func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
@@ -140,10 +165,10 @@ func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 		if err != nil {
 			log.Info(err)
 		}
-		server_response := hex.EncodeToString(response[:n])
+		serverResponse := hex.EncodeToString(response[:n])
 		wg.Add(1)
-		processInput(rm, server_response, wg)
-		log.Debug("Server Input: ", server_response)
+		processInput(rm, serverResponse, wg)
+		log.Debug("Server Input: ", serverResponse)
 	}
 }
 
@@ -172,7 +197,7 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	}
 }
 
-// process messages from the SRx-Server according to their PDU field 
+// process messages from the SRx-Server according to their PDU field
 func processInput(rm *rpkiManager, st string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	elem := st

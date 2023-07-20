@@ -84,7 +84,7 @@ func extractFamilyFromTCPConn(conn *net.TCPConn) int {
 func setsockOptString(sc syscall.RawConn, level int, opt int, str string) error {
 	var opterr error
 	fn := func(s uintptr) {
-		opterr = syscall.SetsockoptString(int(s), level, opt, str)
+		//opterr = syscall.SetsockoptString(int(s), level, opt, str)
 	}
 	err := sc.Control(fn)
 	if opterr == nil {
@@ -96,7 +96,7 @@ func setsockOptString(sc syscall.RawConn, level int, opt int, str string) error 
 func setsockOptInt(sc syscall.RawConn, level, name, value int) error {
 	var opterr error
 	fn := func(s uintptr) {
-		opterr = syscall.SetsockoptInt(int(s), level, name, value)
+		//opterr = syscall.SetsockoptInt(int(s), level, name, value)
 	}
 	err := sc.Control(fn)
 	if opterr == nil {

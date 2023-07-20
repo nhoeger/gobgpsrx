@@ -40,7 +40,7 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 	// Token assigned by the RPKI manager
 	request_token := input[len(input)-16 : len(input)-8]
 
-	// Actual validation result 
+	// Actual validation result
 	result := input[8:10]
 	log.Debug("+----------------------------------------+")
 	log.Debug("Update identifier: ", update_identifer)
@@ -48,13 +48,13 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 	log.Debug("Cached Updates:    ", len(rm.Updates))
 	log.Debug("Result before:     ", result)
 
-	// Iterating through all stores updates to find the matching one 
+	// Iterating through all stores updates to find the matching one
 	for i, update := range rm.Updates {
 		log.Debug("ID:    ", update.local_id)
 		log.Debug("SRx-ID:", update.srx_id)
 		loc_ID := fmt.Sprintf("%08X", update.local_id)
 
-		// Found the correct update -> set SRxID 
+		// Found the correct update -> set SRxID
 		if strings.ToLower(loc_ID) == strings.ToLower(request_token) {
 			log.Debug("Path for Update:   ", update.fsmMsg.PathList)
 			log.Debug("In if Statement")
@@ -81,7 +81,7 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 				if result == "00" {
 					log.Debug("Adding Update")
 
-					// Process the BGP update 
+					// Process the BGP update
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					update.aspa = int(num)
@@ -215,8 +215,8 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	}
 }
 
-// Create new RPKI manager instance 
-// Input: pointer to BGPServer 
+// Create new RPKI manager instance
+// Input: pointer to BGPServer
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	rm := &rpkiManager{
 		AS:        int(s.bgpConfig.Global.Config.As),
@@ -240,9 +240,9 @@ func (rm *rpkiManager) SetServer(s *BgpServer) error {
 	return nil
 }
 
-// Parses the IP address of the SRx-Server
-// Proxy can establish a connection with the SRx-Server and sends a hello message 
-// Thread mandatory to keep proxy alive during runtime 
+// SetSRxServer Parses the IP address of the SRx-Server
+// Proxy can establish a connection with the SRx-Server and sends a hello message
+// Thread mandatory to keep proxy alive during runtime
 func (rm *rpkiManager) SetSRxServer(ip string) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
