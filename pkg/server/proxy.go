@@ -48,6 +48,20 @@ type VerifyMessage struct {
 	local_as              string
 	as_path_list          string
 	path_attribute        string
+	bgpsec                string
+}
+
+type BGPsecDate struct {
+	lengthPathValData string
+	numOfHops         string
+	bgpsecLength      string
+	afi               string
+	safi              string
+	prefixLenBgpsec   string
+	ipPreAddByteA     string
+	ipPreAddByteB     string
+	ipPreAddByteC     string
+	ipPreAddByteD     string
 }
 
 type HelloMessage struct {

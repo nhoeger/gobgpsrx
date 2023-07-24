@@ -1,6 +1,9 @@
 package server
 
+import "C"
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -8,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	//_ "github.com/osrg/gobgp/table"
 	_ "os"
@@ -15,6 +19,12 @@ import (
 	"github.com/osrg/gobgp/pkg/packet/bgp"
 	log "github.com/sirupsen/logrus"
 )
+
+/**********************************************************************
+/TODO: Change validate Function and integrate it into proxy
+/TODO: Finish BGPsec validation and signature
+/TODO: Add BGPsec and AS-Cones callback handling
+***********************************************************************/
 
 type rpkiManager struct {
 	AS        int
@@ -106,9 +116,9 @@ func (rm *rpkiManager) handleSyncCallback() {
 }
 
 // Create a Validation message for an incoming BGP UPDATE message
-// inputs: BGP peer, the message and messag data
+// inputs: BGP peer, the message and message data
 func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
-	var updates_to_send []string
+	var updatesToSend []string
 
 	// Iterate through all paths inside the BGP UPDATE message
 	for _, path := range e.PathList {
@@ -153,6 +163,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			ip_pre_add_byte_d:     "00000000",
 			local_as:              fmt.Sprintf("%08X", rm.AS),
 			as_path_list:          "",
+			bgpsec:                "",
 		}
 		log.Info("Time since Start:", time.Since(rm.StartTime))
 		if rm.Server.bgpConfig.Global.Config.ASPA {
@@ -167,42 +178,45 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			vm.reserved = ""
 			vm.aspa_default_result = "0303"
 			vm.ASPAResultSoruce = "0101"
-
+		} else if peer.fsm.pConf.Config.BgpsecEnable {
+			vm.bgpsec = rm.GenerateBGPSecFields(e)
+		} else {
+			log.Fatal("No Validation Possible.")
 		}
-		as_list := path.GetAsList()
-		for _, asn := range as_list {
+		asList := path.GetAsList()
+		for _, asn := range asList {
 			hexValue := fmt.Sprintf("%08X", asn)
 			vm.as_path_list += hexValue
 
 		}
-		prefix_len := 0
-		prefix_addr := net.ParseIP("0.0.0.0")
-		path_string := path.String()
-		words := strings.Fields(path_string)
+		prefixLen := 0
+		prefixAddr := net.ParseIP("0.0.0.0")
+		pathString := path.String()
+		words := strings.Fields(pathString)
 		for _, word := range words {
 			for j, ch := range word {
 				if ch == '/' {
-					tmp_pref, _ := strconv.Atoi(word[j+1:])
-					prefix_len = tmp_pref
-					prefix_addr = net.ParseIP(word[:j])
+					tmpPref, _ := strconv.Atoi(word[j+1:])
+					prefixLen = tmpPref
+					prefixAddr = net.ParseIP(word[:j])
 				}
 			}
 		}
-		tmp := hex.EncodeToString(prefix_addr)
+		tmp := hex.EncodeToString(prefixAddr)
 		vm.prefix = tmp[len(tmp)-8:]
-		vm.prefix_len = strconv.FormatInt(int64(prefix_len), 16)
-		vm.origin_AS = fmt.Sprintf("%08X", as_list[len(as_list)-1])
+		vm.prefix_len = strconv.FormatInt(int64(prefixLen), 16)
+		vm.origin_AS = fmt.Sprintf("%08X", asList[len(asList)-1])
 		vm.num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
-		tmp_int := 4 * path.GetAsPathLen()
+		tmpInt := 4 * path.GetAsPathLen()
 		//vm.Length = fmt.Sprintf("%08X", 61+tmp_int)
-		vm.Length = fmt.Sprintf("%08X", 60+tmp_int)
-		vm.length_path_val_data = fmt.Sprintf("%08X", tmp_int)
+		vm.Length = fmt.Sprintf("%08X", 60+tmpInt)
+		vm.length_path_val_data = fmt.Sprintf("%08X", tmpInt)
 		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
 
 		if log.GetLevel() == log.DebugLevel {
 			printValMessage(vm)
 		}
-		updates_to_send = append(updates_to_send, structToString(vm))
+		updatesToSend = append(updatesToSend, structToString(vm))
 		rm.Updates = append(rm.Updates, &update)
 		rm.ID = (rm.ID % 10000) + 1
 
@@ -210,12 +224,156 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	}
 
 	// call proxy function to send message to SRx-Server for each update path
-	for _, str := range updates_to_send {
+	for _, str := range updatesToSend {
 		validate_call(&rm.Proxy, str)
 	}
 }
 
-// Create new RPKI manager instance
+func (rm *rpkiManager) GenerateBGPSecFields(e *fsmMsg) string {
+	log.Debug("Generating BGPsec data.")
+	bgpSecString := ""
+
+	m := e.MsgData.(*bgp.BGPMessage)
+	update := m.Body.(*bgp.BGPUpdate)
+
+	var nlriProcessed bool
+	var prefixAddr net.IP
+	var prefixLen uint8
+	var nlriAfi uint16
+	var nlriSafi uint8
+
+	// find the position of bgpsec attribute
+	//
+	data := e.payload
+	data = data[bgp.BGP_HEADER_LENGTH:]
+	if update.WithdrawnRoutesLen > 0 {
+		data = data[2+update.WithdrawnRoutesLen:]
+	} else {
+		data = data[2:]
+	}
+
+	data = data[2:]
+	for pathlen := update.TotalPathAttributeLen; pathlen > 0; {
+		p, _ := bgp.GetPathAttribute(data)
+		p.DecodeFromBytes(data)
+
+		pathlen -= uint16(p.Len())
+
+		if bgp.BGPAttrType(data[1]) != bgp.BGP_ATTR_TYPE_BGPSEC {
+			data = data[p.Len():]
+		} else {
+			break
+		}
+	}
+
+	//
+	// find nlri attribute first and extract prefix info for bgpsec validation
+	//
+	for _, path := range e.PathList {
+
+		// find MP NLRI attribute first
+		for _, p := range path.GetPathAttrs() {
+			typ := uint(p.GetType())
+			if typ == uint(bgp.BGP_ATTR_TYPE_MP_REACH_NLRI) {
+				log.Debug("received MP NLRI: %#v", path)
+				prefixAddr = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
+				prefixLen = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
+				nlriAfi = p.(*bgp.PathAttributeMpReachNLRI).AFI
+				nlriSafi = p.(*bgp.PathAttributeMpReachNLRI).SAFI
+
+				log.WithFields(log.Fields{"Topic": "Bgpsec"}).Debug("prefix:", prefixAddr, prefixLen, nlriAfi, nlriSafi)
+				nlriProcessed = true
+				log.Debug("received MP NLRI: %#v", nlriProcessed)
+			}
+		}
+
+		// find the BGPSec atttribute
+		for _, p := range path.GetPathAttrs() {
+			typ := uint(p.GetType())
+			if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) && nlriProcessed {
+				log.Debug("bgpsec validation start ")
+
+				var myas uint32 = uint32(rm.AS)
+				big2 := make([]byte, 4, 4)
+				for i := 0; i < 4; i++ {
+					u8 := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&myas)) + uintptr(i)))
+					big2 = append(big2, u8)
+				}
+
+				valData := C.SCA_BGPSecValidationData{
+					myAS:             C.uint(binary.BigEndian.Uint32(big2[4:8])),
+					status:           C.sca_status_t(0),
+					bgpsec_path_attr: nil,
+					nlri:             nil,
+					hashMessage:      [2](*C.SCA_HashMessage){},
+				}
+
+				var bs_path_attr_length uint16
+				Flags := bgp.BGPAttrFlag(data[0])
+				if Flags&bgp.BGP_ATTR_FLAG_EXTENDED_LENGTH != 0 {
+					bs_path_attr_length = binary.BigEndian.Uint16(data[2:4])
+				} else {
+
+					bs_path_attr_length = uint16(data[2])
+				}
+
+				bs_path_attr_length = bs_path_attr_length + 4 // flag(1) + length(1) + its own length octet (2)
+				data = data[:bs_path_attr_length]
+				// signature  buffer handling
+				//
+				pa := C.malloc(C.ulong(bs_path_attr_length))
+				defer C.free(pa)
+
+				buf := &bytes.Buffer{}
+				bs_path_attr := data
+
+				//bm.bgpsec_path_attr = data
+				//bm.bgpsec_path_attr_length = bs_path_attr_length
+
+				binary.Write(buf, binary.BigEndian, bs_path_attr)
+				bl := buf.Len()
+				o := (*[1 << 20]C.uchar)(pa)
+
+				for i := 0; i < bl; i++ {
+					b, _ := buf.ReadByte()
+					o[i] = C.uchar(b)
+				}
+				valData.bgpsec_path_attr = (*C.uchar)(pa)
+
+				// prefix handling
+				//
+				prefix2 := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
+				//defer C.free(unsafe.Pointer(prefix2))
+				/*px := &Go_SCA_Prefix{
+					Afi:    nlriAfi,
+					Safi:   nlriSafi,
+					Length: prefixLen,
+					Addr:   [16]byte{},
+				}*/
+
+				//pxip := prefixAddr
+				//copy(px.Addr[:], pxip)
+				//px.Pack(unsafe.Pointer(prefix2))
+				/* comment out for performance measurement
+				C.PrintSCA_Prefix(*prefix2)
+				*/
+				log.Debug("prefix2 : %#v", prefix2)
+
+				valData.nlri = prefix2
+				log.Debug("valData : %#v", valData)
+				log.Debug("valData.bgpsec_path_attr : %#v", valData.bgpsec_path_attr)
+				/* comment out for performance measurement
+				C.printHex(C.int(bs_path_attr_length), valData.bgpsec_path_attr)
+				*/
+				log.Debug("valData.nlri : %#v", *valData.nlri)
+
+			}
+		}
+	}
+	return bgpSecString
+}
+
+// NewRPKIManager Create new RPKI manager instance
 // Input: pointer to BGPServer
 func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 	rm := &rpkiManager{
