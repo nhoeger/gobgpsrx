@@ -88,7 +88,6 @@ go install ./...
 
 
 ## Authors & Main Contributors
-* Kyehwan Lee (kyehwanl@nist.gov)
 * Nils Höger (nils.hoeger@unibw.de)
 </br></br>
 
