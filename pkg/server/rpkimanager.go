@@ -384,8 +384,8 @@ func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 func (rm *rpkiManager) SetSRxServer(ip string) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	rm.Proxy = createSRxProxy(ip)
-	go proxyBackgroundThread(rm, &wg)
+	rm.Proxy = createSRxProxy(rm.AS, ip)
+	go rm.Proxy.proxyBackgroundThread(rm, &wg)
 	return nil
 }
 

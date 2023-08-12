@@ -11,94 +11,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	//HelloMessage      = "01000300000000000000001000000001"
-	GoodByeMessage    = "002"
-	ValidationMessage = "003"
-	SyncMessage       = "0a000000000000000000000c"
-)
-
-type VerifyMessage struct {
-	PDU                  string
-	Flags                string
-	OriginResultSource   string
-	PathResultSource     string
-	ASPAResultSource     string
-	ASConesResultSource  string
-	reserved             string
-	ASPathType           string
-	ASRelationType       string
-	Length               string
-	OriginDefaultResult  string
-	PathDefaultResult    string
-	ASPADefaultResult    string
-	ASConesDefaultResult string
-	prefix_len           string
-	request_token        string
-	prefix               string
-	origin_AS            string
-	length_path_val_data string
-	num_of_hops          string
-	bgpsec_length        string
-	afi                  string
-	safi                 string
-	prefix_len_bgpsec    string
-	ip_pre_add_byte_a    string
-	ip_pre_add_byte_b    string
-	ip_pre_add_byte_c    string
-	ip_pre_add_byte_d    string
-	local_as             string
-	as_path_list         string
-	path_attribute       string
-	bgpsec               string
-}
-
-type VerifyNotify struct {
-	PDU              string
-	ResultType       string
-	OriginResult     string
-	PathResult       string
-	ASPAResult       string
-	ASConesResult    string
-	Zero             string
-	Length           string
-	RequestToken     string
-	UpdateIdentifier string
-}
-
-type BGPsecDate struct {
-	lengthPathValData string
-	numOfHops         string
-	bgpsecLength      string
-	afi               string
-	safi              string
-	prefixLenBgpsec   string
-	ipPreAddByteA     string
-	ipPreAddByteB     string
-	ipPreAddByteC     string
-	ipPreAddByteD     string
-}
-
-type HelloMessage struct {
-	PDU              string
-	Version          string
-	reserved         string
-	zero             string
-	length           string
-	proxy_identifier string
-	ASN              string
-}
-
-type Go_Proxy struct {
-	con          net.Conn
-	conStatus    bool
-	ASN          int
-	Identifier   int
-	InputBuffer  []string
-	OutputBuffer []string
-	lastCall     time.Time
-}
-
 // send validation call to SRx-Server
 func validate_call(proxy *Go_Proxy, input string) {
 	connection := proxy.con
@@ -114,13 +26,13 @@ func validate_call(proxy *Go_Proxy, input string) {
 // ASN becomes the identifier of the proxy
 func sendHello(proxy Go_Proxy) {
 	hm := HelloMessage{
-		PDU:              "00",
+		PDU:              HelloPDU,
 		Version:          "0003",
 		reserved:         "00",
 		zero:             "00000000",
 		length:           "00000014",
 		proxy_identifier: "00000001",
-		ASN:              "0000" + strconv.FormatInt(int64(proxy.Identifier), 16),
+		ASN:              "0000" + strconv.FormatInt(int64(proxy.ASN), 16),
 	}
 	hexString := structToString(hm)
 	log.Info(hexString)
@@ -132,12 +44,12 @@ func sendHello(proxy Go_Proxy) {
 }
 
 // New Proxy instance
-func createSRxProxy(ip string) Go_Proxy {
+func createSRxProxy(AS int, ip string) Go_Proxy {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	pr := Go_Proxy{
-		ASN:        0,
-		Identifier: 65001,
+		ASN: AS,
+		IP:  ip,
 	}
 	pr.connectToSrxServer(ip)
 	sendHello(pr)
@@ -149,7 +61,7 @@ func createSRxProxy(ip string) Go_Proxy {
 func (proxy *Go_Proxy) connectToSrxServer(ip string) {
 	connectionCounter := 1
 	server := "localhost:17900"
-	log.Debug("Trying to connect to SRx-Server. Try Nr.: ", connectionCounter)
+	log.Debug("Trying to connect to SRx-Server.")
 	log.Debug("SRxServer Address: ", ip)
 	if len(ip) != 0 {
 		server = ip + ":17900"
@@ -185,14 +97,19 @@ func (proxy *Go_Proxy) connectionStatus() bool {
 	return true
 }
 
-func proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
+func (proxy *Go_Proxy) proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 	defer wg.Done()
 	con := rm.Proxy.con
 	response := make([]byte, 1024)
 	for {
 		n, err := con.Read(response)
 		if err != nil {
+			log.Info("Lost TCP connection.")
 			log.Info(err)
+			wg.Add(1)
+			proxy.connectToSrxServer(proxy.IP)
+			err = nil
+			return
 		}
 		serverResponse := hex.EncodeToString(response[:n])
 		wg.Add(1)
@@ -229,31 +146,31 @@ func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
 // process messages from the SRx-Server according to their PDU field
 func processInput(rm *rpkiManager, st string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	elem := st
-	if elem[:2] == "01" {
+	PDU := st[:2]
+	if PDU == HelloRepsonsePDU {
 		log.Debug("Received Hello Response")
-		if len(elem) > 32 {
+		if len(st) > 32 {
 			log.Debug("More than just the hello message")
 			wg.Add(1)
-			processInput(rm, elem[32:], wg)
+			processInput(rm, st[32:], wg)
 		}
 	}
-	if elem[:2] == "0a" {
+	if PDU == SyncMessagePDU {
 		log.Debug("Received Sync Request")
 		rm.handleSyncCallback()
-		if len(elem) > 24 {
+		if len(st) > 24 {
 			wg.Add(1)
-			processInput(rm, elem[24:], wg)
+			processInput(rm, st[24:], wg)
 		}
 	}
-	if elem[:2] == "06" {
+	if PDU == VerifyNotifyPDU {
 		log.Debug("Processing Validation Input")
-		if len(elem) > 40 {
-			handleVerifyNotify(elem[:40], *rm)
+		if len(st) > 40 {
+			handleVerifyNotify(st[:40], *rm)
 			wg.Add(1)
-			processInput(rm, elem[40:], wg)
+			processInput(rm, st[40:], wg)
 		} else {
-			handleVerifyNotify(elem, *rm)
+			handleVerifyNotify(st, *rm)
 		}
 	}
 }
