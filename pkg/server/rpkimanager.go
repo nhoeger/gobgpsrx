@@ -66,37 +66,41 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 
 		// Found the matching token -> process result
 		if update.srx_id == vn.UpdateIdentifier {
-			if vn.ResultType == "04" {
-				// Valid update
-				if vn.ASPAResult == "00" {
-					// Process the BGP update
+			// ROA Result
+			if vn.ResultType == "01" {
+				if vn.OriginResult == "00" {
+					log.Debug("ROA validation result: Valid Update")
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					return
 				} else {
+					log.Debug("ROA validation result: Invalid Update")
+					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+					return
+				}
+			}
+			// ASPA Result
+			if vn.ResultType == "04" {
+				if vn.ASPAResult == "00" {
+					log.Debug("ASPA validation result: Valid Update")
+					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
+					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+					return
+				} else {
+					log.Debug("ASPA validation result: Invalid Update")
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					return
 				}
 			}
 			// ASCones Result
 			if vn.ResultType == "08" {
-				log.Debug("In If")
-				// Valid update
 				if vn.ASConesResult == "00" {
-
-					log.Debug("In If2")
-					// Process the BGP update
+					log.Debug("AS-Cones validation result: Valid Update")
 					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					return
 				} else {
-					// Update invalid
-					log.Debug("INVALID UPDATE")
-					log.Debug("INVALID UPDATE")
-					log.Debug("INVALID UPDATE")
-					log.Debug("INVALID UPDATE")
-					log.Debug("INVALID UPDATE")
-					log.Debug("INVALID UPDATE")
+					log.Debug("AS-Cones validation result: Invalid Update")
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					return
 				}
@@ -129,11 +133,6 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			peer:     peer,
 			fsmMsg:   e,
 			bgpMsg:   m,
-			path:     2,
-			origin:   2,
-			aspa:     2,
-			ascones:  2,
-			time:     time.Now(),
 		}
 		// Create new message for each path
 		vm := VerifyMessage{
@@ -167,13 +166,11 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		}
 		log.Info("Time since Start:", time.Since(rm.StartTime))
 		if rm.Server.bgpConfig.Global.Config.ASPA {
-			log.Debug("ASPA")
+			log.Debug("Generating ASPA Reqeust")
 			vm.Flags = "84"
-			//vm.reserved = "00"
 		} else if rm.Server.bgpConfig.Global.Config.ASCONES {
-			log.Debug("ASCones")
+			log.Debug("Generating AS-Cones Request")
 			vm.Flags = "88"
-			//vm.reserved = ""
 		} else if peer.fsm.pConf.Config.BgpsecEnable {
 			vm.bgpsec = rm.GenerateBGPSecFields(e)
 		} else {
@@ -205,7 +202,6 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		vm.num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
 		tmpInt := 4 * path.GetAsPathLen()
 		vm.Length = fmt.Sprintf("%08X", 61+tmpInt)
-		//vm.Length = fmt.Sprintf("%08X", 60+tmpInt)
 		vm.length_path_val_data = fmt.Sprintf("%08X", tmpInt)
 		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
 
@@ -215,8 +211,6 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		updatesToSend = append(updatesToSend, structToString(vm))
 		rm.Updates = append(rm.Updates, &update)
 		rm.ID = (rm.ID % 10000) + 1
-
-		log.Info("Total Updates:", rm.ID, "/", rm.Resets)
 	}
 
 	// call proxy function to send message to SRx-Server for each update path
@@ -382,17 +376,6 @@ func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 		Resets:    0,
 	}
 	return rm, nil
-}
-
-func (rm *rpkiManager) SetServer(s *BgpServer) error {
-	log.WithFields(log.Fields{
-		"new Server": s,
-	}).Debug("Changing RPKI Manager BGP Server")
-	if rm.Server != nil {
-		return fmt.Errorf("Server was already configured")
-	}
-	rm.Server = s
-	return nil
 }
 
 // SetSRxServer Parses the IP address of the SRx-Server
