@@ -139,7 +139,7 @@ type BgpServer struct {
 	roaTable     *table.ROATable
 	uuidMap      map[string]uuid.UUID
 	//bgpsecManager *bgpsecManager
-	rpkiManager   *rpkiManager
+	rpkiManager   *RPKIManager
 	updateManager *updateManager
 }
 

@@ -11,8 +11,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type GoSRxProxy struct {
+	//client       *RPKIManager
+	con                  net.Conn
+	conStatus            bool
+	ASN                  int
+	InputBuffer          []string
+	OutputBuffer         []string
+	IP                   string
+	VerifyNotifyCallback func(*VerifyNotify)
+	SyncNotifyCallback   func()
+}
+
 // send validation call to SRx-Server
-func validate_call(proxy *Go_Proxy, input string) {
+func validate_call(proxy *GoSRxProxy, input string) {
 	connection := proxy.con
 	bytes2, err := hex.DecodeString(input)
 	_, err = connection.Write(bytes2)
@@ -24,7 +36,7 @@ func validate_call(proxy *Go_Proxy, input string) {
 
 // Sends Hello message to SRx-Server
 // ASN becomes the identifier of the proxy
-func sendHello(proxy Go_Proxy) {
+func sendHello(proxy GoSRxProxy) {
 	hm := HelloMessage{
 		PDU:              HelloPDU,
 		Version:          "0003",
@@ -44,12 +56,14 @@ func sendHello(proxy Go_Proxy) {
 }
 
 // New Proxy instance
-func createSRxProxy(AS int, ip string) Go_Proxy {
+func createSRxProxy(AS int, ip string, VNC func(*VerifyNotify), SC func()) GoSRxProxy {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	pr := Go_Proxy{
-		ASN: AS,
-		IP:  ip,
+	pr := GoSRxProxy{
+		ASN:                  AS,
+		IP:                   ip,
+		VerifyNotifyCallback: VNC,
+		SyncNotifyCallback:   SC,
 	}
 	pr.connectToSrxServer(ip)
 	sendHello(pr)
@@ -58,7 +72,7 @@ func createSRxProxy(AS int, ip string) Go_Proxy {
 
 // Establish a TCP connection with the SRx-Server
 // If no IP is provided, the proxy tries to reach localhost:17900
-func (proxy *Go_Proxy) connectToSrxServer(ip string) {
+func (proxy *GoSRxProxy) connectToSrxServer(ip string) {
 	connectionCounter := 1
 	server := "localhost:17900"
 	log.Debug("Trying to connect to SRx-Server.")
@@ -86,20 +100,9 @@ func (proxy *Go_Proxy) connectToSrxServer(ip string) {
 	}
 }
 
-func (proxy *Go_Proxy) connectionStatus() bool {
-	conn := proxy.con
-	_, err := conn.Write([]byte("Ping"))
-	if err != nil {
-		log.Debug("Lost TCP Connection:", err)
-		return false
-	}
-	log.Debug("TCP Connection still active.")
-	return true
-}
-
-func (proxy *Go_Proxy) proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
+func (proxy *GoSRxProxy) proxyBackgroundThread(wg *sync.WaitGroup) {
 	defer wg.Done()
-	con := rm.Proxy.con
+	con := proxy.con
 	response := make([]byte, 1024)
 	for {
 		n, err := con.Read(response)
@@ -113,75 +116,69 @@ func (proxy *Go_Proxy) proxyBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup
 		}
 		serverResponse := hex.EncodeToString(response[:n])
 		wg.Add(1)
-		processInput(rm, serverResponse, wg)
+		proxy.processInput(serverResponse, wg)
 		log.Debug("Server Input: ", serverResponse)
 	}
 }
 
-func senderBackgroundThread(rm *rpkiManager, wg *sync.WaitGroup) {
-	defer wg.Done()
-	con := rm.Proxy.con
-	startTime := time.Now()
-	for {
-		currentTime := time.Now()
-		if currentTime.Sub(startTime) >= 2*time.Second {
-			log.Info("Length:", len(rm.Proxy.InputBuffer))
-			if len(rm.Proxy.InputBuffer) > 0 {
-				bytes, err1 := hex.DecodeString(rm.Proxy.InputBuffer[0])
-				_, err2 := con.Write(bytes)
-				if err1 != nil {
-					log.Fatal("Cannot Convert Message: ", err1)
-				}
-				if err2 != nil {
-					log.Fatal("Cannot Write Bytes: ", err2)
-				}
-				rm.Proxy.InputBuffer = rm.Proxy.InputBuffer[1:]
-			}
-			startTime = currentTime
-		}
-
-	}
-}
-
 // process messages from the SRx-Server according to their PDU field
-func processInput(rm *rpkiManager, st string, wg *sync.WaitGroup) {
+func (proxy *GoSRxProxy) processInput(st string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	PDU := st[:2]
 	if PDU == HelloRepsonsePDU {
 		log.Debug("Received Hello Response")
 		if len(st) > 32 {
-			log.Debug("More than just the hello message")
+			log.Debug("More than just the Hello message")
 			wg.Add(1)
-			processInput(rm, st[32:], wg)
+			proxy.processInput(st[32:], wg)
 		}
 	}
 	if PDU == SyncMessagePDU {
 		log.Debug("Received Sync Request")
-		rm.handleSyncCallback()
+		proxy.SyncNotifyCallback()
 		if len(st) > 24 {
 			wg.Add(1)
-			processInput(rm, st[24:], wg)
+			proxy.processInput(st[24:], wg)
 		}
 	}
 	if PDU == VerifyNotifyPDU {
 		log.Debug("Processing Validation Input")
 		if len(st) > 40 {
-			handleVerifyNotify(st[:40], *rm)
+			proxy.verifyNotifyCallback(st[:40])
 			wg.Add(1)
-			processInput(rm, st[40:], wg)
+			proxy.processInput(st[40:], wg)
 		} else {
-			handleVerifyNotify(st, *rm)
+			proxy.verifyNotifyCallback(st)
 		}
 	}
 }
 
+// Convert data structures to string before sending
 func structToString(data interface{}) string {
 	value := reflect.ValueOf(data)
 	numFields := value.NumField()
-	return_string := ""
+	returnString := ""
 	for i := 0; i < numFields; i++ {
 		field := value.Field(i)
-		return_string += field.String()
+		returnString += field.String()
 	}
-	return return_string
+	return returnString
+}
+
+// Convert the input string into VerifyNotify
+// Parse VerifyNotify to RPKIManager
+func (proxy *GoSRxProxy) verifyNotifyCallback(input string) {
+	vn := VerifyNotify{
+		PDU:              input[:2],
+		ResultType:       input[2:4],
+		OriginResult:     input[4:6],
+		PathResult:       input[6:8],
+		ASPAResult:       input[8:10],
+		ASConesResult:    input[10:12],
+		Zero:             input[12:16],
+		Length:           input[16:24],
+		RequestToken:     input[24:32],
+		UpdateIdentifier: input[32:40],
+	}
+	proxy.VerifyNotifyCallback(&vn)
 }

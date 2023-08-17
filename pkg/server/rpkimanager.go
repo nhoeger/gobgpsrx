@@ -23,10 +23,10 @@ import (
 /TODO: Add BGPsec and AS-Cones callback handling
 ***********************************************************************/
 
-type rpkiManager struct {
+type RPKIManager struct {
 	AS        int
 	ID        int
-	Proxy     Go_Proxy
+	Proxy     GoSRxProxy
 	Server    *BgpServer
 	Updates   []*srx_update
 	StartTime time.Time
@@ -35,31 +35,17 @@ type rpkiManager struct {
 
 // Callback function: The proxy can call this function when the SRx-Server sends a verify notify
 // Input is a raw string containing the message from the server and a pointer to the rpkimanager
-func handleVerifyNotify(input string, rm rpkiManager) {
-	log.Debug("Input: ", input)
-	vn := VerifyNotify{
-		PDU:              input[:2],
-		ResultType:       input[2:4],
-		OriginResult:     input[4:6],
-		PathResult:       input[6:8],
-		ASPAResult:       input[8:10],
-		ASConesResult:    input[10:12],
-		Zero:             input[12:16],
-		Length:           input[16:24],
-		RequestToken:     input[24:32],
-		UpdateIdentifier: input[32:40],
-	}
-
+func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 	if log.GetLevel() == log.DebugLevel {
-		printValRes(vn)
+		printValRes(*vn)
 	}
 
 	// Iterating through all stores updates to find the matching one
 	for i, update := range rm.Updates {
-		loc_ID := fmt.Sprintf("%08X", update.local_id)
+		locId := fmt.Sprintf("%08X", update.local_id)
 
 		// Found the correct update -> set SRxID
-		if strings.ToLower(loc_ID) == strings.ToLower(vn.RequestToken) {
+		if strings.ToLower(locId) == strings.ToLower(vn.RequestToken) {
 			update.srx_id = vn.UpdateIdentifier
 			return
 		}
@@ -111,7 +97,7 @@ func handleVerifyNotify(input string, rm rpkiManager) {
 }
 
 // Server send Sync message and Proxy responds with all cached updates
-func (rm *rpkiManager) handleSyncCallback() {
+func (rm *RPKIManager) handleSyncCallback() {
 	log.Debug("in sync callback function")
 	for _, Updates := range rm.Updates {
 		log.Debug("Requesting Validation for Update ", Updates.local_id)
@@ -121,7 +107,7 @@ func (rm *rpkiManager) handleSyncCallback() {
 
 // Create a Validation message for an incoming BGP UPDATE message
 // inputs: BGP peer, the message and message data
-func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
+func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	var updatesToSend []string
 
 	// Iterate through all paths inside the BGP UPDATE message
@@ -166,7 +152,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		}
 		log.Info("Time since Start:", time.Since(rm.StartTime))
 		if rm.Server.bgpConfig.Global.Config.ASPA {
-			log.Debug("Generating ASPA Reqeust")
+			log.Debug("Generating ASPA Request")
 			vm.Flags = "84"
 		} else if rm.Server.bgpConfig.Global.Config.ASCONES {
 			log.Debug("Generating AS-Cones Request")
@@ -219,7 +205,7 @@ func (rm *rpkiManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	}
 }
 
-func (rm *rpkiManager) GenerateBGPSecFields(e *fsmMsg) string {
+func (rm *RPKIManager) GenerateBGPSecFields(e *fsmMsg) string {
 	/*log.Debug("Generating BGPsec data.")
 	bgpSecString := ""
 
@@ -366,8 +352,8 @@ func (rm *rpkiManager) GenerateBGPSecFields(e *fsmMsg) string {
 
 // NewRPKIManager Create new RPKI manager instance
 // Input: pointer to BGPServer
-func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
-	rm := &rpkiManager{
+func NewRPKIManager(s *BgpServer) (*RPKIManager, error) {
+	rm := &RPKIManager{
 		AS:        int(s.bgpConfig.Global.Config.As),
 		Server:    s,
 		ID:        1,
@@ -381,15 +367,15 @@ func NewRPKIManager(s *BgpServer) (*rpkiManager, error) {
 // SetSRxServer Parses the IP address of the SRx-Server
 // Proxy can establish a connection with the SRx-Server and sends a hello message
 // Thread mandatory to keep proxy alive during runtime
-func (rm *rpkiManager) SetSRxServer(ip string) error {
+func (rm *RPKIManager) SetSRxServer(ip string) error {
 	var wg sync.WaitGroup
 	wg.Add(1)
-	rm.Proxy = createSRxProxy(rm.AS, ip)
-	go rm.Proxy.proxyBackgroundThread(rm, &wg)
+	rm.Proxy = createSRxProxy(rm.AS, ip, rm.handleVerifyNotify, rm.handleSyncCallback)
+	go rm.Proxy.proxyBackgroundThread(&wg)
 	return nil
 }
 
-func (rm *rpkiManager) SetAS(as uint32) error {
+func (rm *RPKIManager) SetAS(as uint32) error {
 	log.WithFields(log.Fields{
 		"new ASN": as,
 		"old ASN": rm.AS,

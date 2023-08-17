@@ -1,10 +1,5 @@
 package server
 
-import (
-	"net"
-	"time"
-)
-
 const (
 	HelloPDU                 = "00"
 	HelloRepsonsePDU         = "01"
@@ -89,14 +84,4 @@ type HelloMessage struct {
 	length           string
 	proxy_identifier string
 	ASN              string
-}
-
-type Go_Proxy struct {
-	con          net.Conn
-	conStatus    bool
-	ASN          int
-	InputBuffer  []string
-	OutputBuffer []string
-	lastCall     time.Time
-	IP           string
 }
