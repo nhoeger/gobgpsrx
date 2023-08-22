@@ -56,11 +56,22 @@ func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 			if vn.ResultType == "01" {
 				if vn.OriginResult == "00" {
 					log.Debug("ROA validation result: Valid Update")
-					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+					rm.checkUpdate(i)
 					return
 				} else {
 					log.Debug("ROA validation result: Invalid Update")
+					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+					return
+				}
+			}
+			// Path Result
+			if vn.ResultType == "02" {
+				if vn.OriginResult == "00" {
+					log.Debug("Path validation result: Valid Update")
+					rm.checkUpdate(i)
+					return
+				} else {
+					log.Debug("Path validation result: Invalid Update")
 					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 					return
 				}
@@ -69,8 +80,7 @@ func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 			if vn.ResultType == "04" {
 				if vn.ASPAResult == "00" {
 					log.Debug("ASPA validation result: Valid Update")
-					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+					rm.checkUpdate(i)
 					return
 				} else {
 					log.Debug("ASPA validation result: Invalid Update")
@@ -82,8 +92,7 @@ func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 			if vn.ResultType == "08" {
 				if vn.ASConesResult == "00" {
 					log.Debug("AS-Cones validation result: Valid Update")
-					rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+					rm.checkUpdate(i)
 					return
 				} else {
 					log.Debug("AS-Cones validation result: Invalid Update")
@@ -92,7 +101,16 @@ func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 				}
 			}
 		}
+	}
+}
 
+// If all requested validations for an update return valid, the update is valid
+// and the routing daemon can further process it
+func (rm *RPKIManager) checkUpdate(i int) {
+	update := rm.Updates[i]
+	if update.origin && update.path && update.aspa && update.ascones {
+		rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
+		rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
 	}
 }
 
@@ -119,6 +137,10 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			peer:     peer,
 			fsmMsg:   e,
 			bgpMsg:   m,
+			origin:   true,
+			path:     true,
+			aspa:     true,
+			ascones:  true,
 		}
 		// Create new message for each path
 		vm := VerifyMessage{
@@ -150,18 +172,24 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			as_path_list:         "",
 			bgpsec:               "",
 		}
-		log.Info("Time since Start:", time.Since(rm.StartTime))
+		if rm.Server.bgpConfig.Global.Config.ROA {
+			update.origin = false
+		}
+		if peer.fsm.pConf.Config.BgpsecEnable {
+			vm.bgpsec = rm.GenerateBGPSecFields(e)
+			update.path = false
+		}
 		if rm.Server.bgpConfig.Global.Config.ASPA {
 			log.Debug("Generating ASPA Request")
 			vm.Flags = "84"
-		} else if rm.Server.bgpConfig.Global.Config.ASCONES {
+			update.aspa = false
+		}
+		if rm.Server.bgpConfig.Global.Config.ASCONES {
 			log.Debug("Generating AS-Cones Request")
 			vm.Flags = "88"
-		} else if peer.fsm.pConf.Config.BgpsecEnable {
-			vm.bgpsec = rm.GenerateBGPSecFields(e)
-		} else {
-			log.Fatal("No Validation Possible.")
+			update.ascones = false
 		}
+
 		asList := path.GetAsList()
 		for _, asn := range asList {
 			hexValue := fmt.Sprintf("%08X", asn)

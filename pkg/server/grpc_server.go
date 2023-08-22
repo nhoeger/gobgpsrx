@@ -1724,6 +1724,7 @@ func newGlobalFromAPIStruct(a *api.Global) *config.Global {
 			SRxServer:        a.SRxServer,
 			ASPA:             a.ASPA,
 			ASCONES:          a.ASCONES,
+			ROA:              a.ROA,
 			LocalAddressList: a.ListenAddresses,
 			KeyPath:          a.KeyPath,
 		},

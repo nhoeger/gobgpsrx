@@ -12,9 +12,9 @@ type srx_update struct {
 	peer     *peer
 	fsmMsg   *fsmMsg
 	bgpMsg   *bgp.BGPMessage
-	path     int
-	origin   int
-	aspa     int
-	ascones  int
+	path     bool
+	origin   bool
+	aspa     bool
+	ascones  bool
 	time     time.Time
 }

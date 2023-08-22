@@ -4846,6 +4846,7 @@ type GlobalConfig struct {
 	// original -> gobgp:local-address
 	LocalAddressList []string `mapstructure:"local-address-list" json:"local-address-list,omitempty"`
 	SRxServer string `mapstructure:"SRxServer" json:"SRxServer,omitempty"`
+	ROA bool `mapstructure:"ROA" json:"ROA,omitempty"`
 	ASPA bool `mapstructure:"ASPA" json:"ASPA,omitempty"`
 	ASCONES bool `mapstructure:"ASCONES" json:"ASCONES,omitempty"`
 	KeyPath string `mapstructure:"key-path" json:"key-path,omitempty"`

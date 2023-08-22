@@ -632,6 +632,7 @@ func NewGlobalFromConfigStruct(c *Global) *api.Global {
 		SRxServer:        c.Config.SRxServer,
 		ASPA:             c.Config.ASPA,
 		ASCONES:          c.Config.ASCONES,
+		ROA:              c.Config.ROA,
 		ListenPort:       c.Config.Port,
 		ListenAddresses:  c.Config.LocalAddressList,
 		KeyPath:          c.Config.KeyPath,

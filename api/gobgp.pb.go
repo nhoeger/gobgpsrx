@@ -5330,6 +5330,7 @@ type Global struct {
 	ApplyPolicy           *ApplyPolicy                 `protobuf:"bytes,11,opt,name=apply_policy,json=applyPolicy" json:"apply_policy,omitempty"`
 	KeyPath               string                       `protobuf:"bytes,12,opt,name=KeyPath" json:"KeyPath,omitempty"`
 	SRxServer				string  `protobuf:"bytes,13,opt,name=SRxServer" json:"SRxServer,omitempty"`
+	ROA bool `protobuf:"varint,6,opt,name=ROA,json=ROA"`
 	ASPA bool `protobuf:"varint,6,opt,name=ASPA,json=ASPA"`
 	ASCONES bool `protobuf:"varint,6,opt,name=ASCONES,json=ASCONES"`
 }

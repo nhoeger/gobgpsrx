@@ -2752,6 +2752,7 @@ func (s *BgpServer) GetBgp(ctx context.Context, r *api.GetBgpRequest) (*api.GetB
 				SRxServer:        g.Config.SRxServer,
 				ASPA:             g.Config.ASPA,
 				ASCONES:          g.Config.ASCONES,
+				ROA:              g.Config.ROA,
 				RouterId:         g.Config.RouterId,
 				ListenPort:       g.Config.Port,
 				ListenAddresses:  g.Config.LocalAddressList,
