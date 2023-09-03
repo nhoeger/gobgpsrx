@@ -657,6 +657,7 @@ func (s *BgpServer) prePolicyFilterpath(peer *peer, path, old *table.Path) (*tab
 
 	// BGPSec flags checking, then, add secure path, secure block to bgpsec path attr
 	if peer.fsm.pConf.Config.BgpsecEnable {
+		log.Info("In IFFFFFFFFFFFFFf")
 		for _, pa := range path.GetPathAttrs() {
 			typ := uint(pa.GetType())
 			if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) {
@@ -1603,8 +1604,15 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			// Update processing set on hold until the validation with the SRx-Server was successfull
-			s.rpkiManager.validate(peer, m, e)
+			if peer.fsm.pConf.Config.BgpsecEnable {
+				log.Debug("Peer: BGPsecEnable; Parsing update to manager.")
+				s.rpkiManager.validateBGPsecMessage(e)
+			} else if s.bgpConfig.Global.Config.ASPA || s.bgpConfig.Global.Config.ASCONES || s.bgpConfig.Global.Config.ROA {
+				// Update processing set on hold until the validation with the SRx-Server was successfull
+				s.rpkiManager.validate(peer, m, e)
+			} else {
+				s.ProcessValidUpdate(peer, e, m)
+			}
 			return
 		}
 	default:

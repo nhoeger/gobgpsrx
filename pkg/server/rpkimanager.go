@@ -2,6 +2,7 @@ package server
 
 import "C"
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -29,83 +30,132 @@ type RPKIManager struct {
 	Proxy     GoSRxProxy
 	Server    *BgpServer
 	Updates   []*srx_update
+	Queue     []*VerifyNotify
 	StartTime time.Time
 	Resets    int
+	Ready     bool
+}
+
+func hexToBinary(hexStr string) (string, error) {
+	log.Debug("String to convert: ", hexStr)
+	decimalValue, err := strconv.ParseInt(hexStr, 16, 64)
+	if err != nil {
+		return "", err
+	}
+	binaryStr := strconv.FormatInt(decimalValue, 2)
+	for len(binaryStr) < 8 {
+		binaryStr = "0" + binaryStr
+	}
+	log.Debug("Returning: ", binaryStr)
+	return binaryStr, nil
+}
+
+func (rm *RPKIManager) resultsFor(vn *VerifyNotify) (bool, bool, bool, bool) {
+	tmp, err := hexToBinary(vn.ResultType)
+	if err != nil {
+		log.Fatal("Conversion error!")
+	}
+	log.Debug("Binary String: ", tmp)
+	ROA := tmp[len(tmp)-1] == '1'
+	BGPsec := tmp[len(tmp)-2] == '1'
+	ASPA := tmp[len(tmp)-3] == '1'
+	ASCones := tmp[len(tmp)-4] == '1'
+	log.Info("Booleans: ", ROA, ", ", BGPsec, ", ", ASPA, ", ", ASCones)
+	return ROA, BGPsec, ASPA, ASCones
+}
+
+func (rm *RPKIManager) findUpdateInstance(token string, SRxID string) (*srx_update, int) {
+	for i, update := range rm.Updates {
+		locId := fmt.Sprintf("%08X", update.local_id)
+		if strings.ToLower(locId) == token || rm.Updates[i].srx_id == SRxID {
+			if rm.Updates[i].srx_id == "" {
+				log.Debug("Received SRX-ID.")
+				rm.Updates[i].srx_id = SRxID
+			}
+			return rm.Updates[i], i
+		}
+	}
+	return nil, 0
+}
+
+func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
+	log.Info("Yep im here")
+	rm.Queue = append(rm.Queue, vn)
+	if rm.Ready {
+		rm.handleVerifyNotifyBuffer(rm.Queue[0])
+	}
 }
 
 // Callback function: The proxy can call this function when the SRx-Server sends a verify notify
 // Input is a raw string containing the message from the server and a pointer to the rpkimanager
-func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
+func (rm *RPKIManager) handleVerifyNotifyBuffer(vn *VerifyNotify) {
+	rm.Ready = false
+	invalid := false
 	if log.GetLevel() == log.DebugLevel {
 		printValRes(*vn)
 	}
 
-	// Iterating through all stores updates to find the matching one
-	for i, update := range rm.Updates {
-		locId := fmt.Sprintf("%08X", update.local_id)
+	// Find the matching Update instance + index
+	update, i := rm.findUpdateInstance(vn.RequestToken, vn.UpdateIdentifier)
+	if update == nil {
+		//log.Fatal("Found no matching Update")
+		return
+	}
 
-		// Found the correct update -> set SRxID
-		if strings.ToLower(locId) == strings.ToLower(vn.RequestToken) {
-			update.srx_id = vn.UpdateIdentifier
-			return
-		}
+	// Identify which validation results are included in the verify notify message
+	ROA, BGPsec, ASPA, ASCones := rm.resultsFor(vn)
 
-		// Found the matching token -> process result
-		if update.srx_id == vn.UpdateIdentifier {
-			// ROA Result
-			if vn.ResultType == "01" {
-				if vn.OriginResult == "00" {
-					log.Debug("ROA validation result: Valid Update")
-					update.origin = true
-					rm.checkUpdate(i)
-					return
-				} else {
-					log.Debug("ROA validation result: Invalid Update")
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
-					return
-				}
-			}
-			// Path Result
-			if vn.ResultType == "02" {
-				if vn.OriginResult == "00" {
-					log.Debug("Path validation result: Valid Update")
-					update.path = true
-					rm.checkUpdate(i)
-					return
-				} else {
-					log.Debug("Path validation result: Invalid Update")
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
-					return
-				}
-			}
-			// ASPA Result
-			if vn.ResultType == "04" {
-				if vn.ASPAResult == "00" {
-					log.Debug("ASPA validation result: Valid Update")
-					update.aspa = true
-					rm.checkUpdate(i)
-					return
-				} else {
-					log.Debug("ASPA validation result: Invalid Update")
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
-					return
-				}
-			}
-			// ASCones Result
-			if vn.ResultType == "08" {
-				if vn.ASConesResult == "00" {
-					log.Debug("AS-Cones validation result: Valid Update")
-					update.ascones = true
-					rm.checkUpdate(i)
-					return
-				} else {
-					log.Debug("AS-Cones validation result: Invalid Update")
-					rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
-					return
-				}
-			}
+	if ROA && vn.OriginResult != "03" {
+		if vn.OriginResult == "00" {
+			log.Debug("ROA validation result: Valid Update")
+			update.origin = true
+			rm.checkUpdate(i)
+		} else {
+			log.Debug("ROA validation result: Invalid Update")
+			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			invalid = true
 		}
 	}
+	if BGPsec && vn.PathResult != "03" && !invalid {
+		if vn.OriginResult == "00" {
+			log.Debug("Path validation result: Valid Update")
+			update.path = true
+			rm.checkUpdate(i)
+		} else {
+			log.Debug("Path validation result: Invalid Update")
+			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			invalid = true
+		}
+	}
+	if ASPA && vn.ASPAResult != "03" && !invalid {
+		if vn.ASPAResult == "00" {
+			log.Debug("ASPA validation result: Valid Update")
+			update.aspa = true
+			rm.checkUpdate(i)
+		} else {
+			log.Debug("ASPA validation result: Invalid Update")
+			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			invalid = true
+		}
+	}
+	if ASCones && vn.ASConesResult != "03" && !invalid {
+		if vn.ASConesResult == "00" {
+			log.Debug("AS-Cones validation result: Valid Update")
+			update.ascones = true
+			rm.checkUpdate(i)
+		} else {
+			log.Debug("AS-Cones validation result: Invalid Update")
+			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			invalid = true
+		}
+	}
+	rm.Queue = rm.Queue[1:]
+	if len(rm.Queue) > 0 {
+		rm.handleVerifyNotifyBuffer(rm.Queue[0])
+	} else {
+		rm.Ready = true
+	}
+
 }
 
 // If all requested validations for an update return valid, the update is valid
@@ -131,7 +181,10 @@ func (rm *RPKIManager) handleSyncCallback() {
 // inputs: BGP peer, the message and message data
 func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	var updatesToSend []string
-
+	log.Info("Message: ", m)
+	log.Info("Message: ", m.Body)
+	log.Info("Message: ", e.MsgData)
+	log.Info("E: ", e)
 	// Iterate through all paths inside the BGP UPDATE message
 	for _, path := range e.PathList {
 		// Create new SRxUpdate for each path
@@ -183,7 +236,8 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		}
 		if peer.fsm.pConf.Config.BgpsecEnable {
 			tmpFlag += 2
-			vm.bgpsec = rm.GenerateBGPSecFields(e)
+
+			//vm.bgpsec = rm.GenerateBGPSecFields(e)
 			update.path = false
 		}
 		if rm.Server.bgpConfig.Global.Config.ASPA {
@@ -241,9 +295,9 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	}
 }
 
-func (rm *RPKIManager) GenerateBGPSecFields(e *fsmMsg) string {
-	/*log.Debug("Generating BGPsec data.")
-	bgpSecString := ""
+func (rm *RPKIManager) validateBGPsecMessage(e *fsmMsg) {
+	log.Debug("Handling BGPsec message")
+	//bgpSecString := ""
 
 	m := e.MsgData.(*bgp.BGPMessage)
 	update := m.Body.(*bgp.BGPUpdate)
@@ -304,21 +358,8 @@ func (rm *RPKIManager) GenerateBGPSecFields(e *fsmMsg) string {
 			typ := uint(p.GetType())
 			if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) && nlriProcessed {
 				log.Debug("bgpsec validation start ")
-
-				var myas uint32 = uint32(rm.AS)
-				big2 := make([]byte, 4, 4)
-				for i := 0; i < 4; i++ {
-					u8 := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&myas)) + uintptr(i)))
-					big2 = append(big2, u8)
-				}
-
-				valData := C.SCA_BGPSecValidationData{
-					myAS:             C.uint(binary.BigEndian.Uint32(big2[4:8])),
-					status:           C.sca_status_t(0),
-					bgpsec_path_attr: nil,
-					nlri:             nil,
-					hashMessage:      [2](*C.SCA_HashMessage){},
-				}
+				myAS := rm.AS
+				log.Debug("AS: ", myAS)
 
 				var bs_path_attr_length uint16
 				Flags := bgp.BGPAttrFlag(data[0])
@@ -331,59 +372,15 @@ func (rm *RPKIManager) GenerateBGPSecFields(e *fsmMsg) string {
 
 				bs_path_attr_length = bs_path_attr_length + 4 // flag(1) + length(1) + its own length octet (2)
 				data = data[:bs_path_attr_length]
-				// signature  buffer handling
-				//
-				pa := C.malloc(C.ulong(bs_path_attr_length))
-				defer C.free(pa)
 
-				buf := &bytes.Buffer{}
+				log.Debug("bs_path_attr_length: ", bs_path_attr_length)
+
 				bs_path_attr := data
-
-				//bm.bgpsec_path_attr = data
-				//bm.bgpsec_path_attr_length = bs_path_attr_length
-
-				binary.Write(buf, binary.BigEndian, bs_path_attr)
-				bl := buf.Len()
-				o := (*[1 << 20]C.uchar)(pa)
-
-				for i := 0; i < bl; i++ {
-					b, _ := buf.ReadByte()
-					o[i] = C.uchar(b)
-				}
-				valData.bgpsec_path_attr = (*C.uchar)(pa)
-
-				// prefix handling
-				//
-				prefix2 := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
-				//defer C.free(unsafe.Pointer(prefix2))
-				/*px := &Go_SCA_Prefix{
-					Afi:    nlriAfi,
-					Safi:   nlriSafi,
-					Length: prefixLen,
-					Addr:   [16]byte{},
-				}*/
-
-	//pxip := prefixAddr
-	//copy(px.Addr[:], pxip)
-	//px.Pack(unsafe.Pointer(prefix2))
-	/* comment out for performance measurement
-	C.PrintSCA_Prefix(*prefix2)
-	*/ /*
-		log.Debug("prefix2 : %#v", prefix2)
-
-		valData.nlri = prefix2
-		log.Debug("valData : %#v", valData)
-		log.Debug("valData.bgpsec_path_attr : %#v", valData.bgpsec_path_attr)
-		/* comment out for performance measurement
-		C.printHex(C.int(bs_path_attr_length), valData.bgpsec_path_attr)
-	*/ /*
-					log.Debug("valData.nlri : %#v", *valData.nlri)
-
-				}
+				log.Debug("bspathattr", bs_path_attr)
+				log.Debug("Prefix Data: ", nlriAfi, nlriSafi, prefixLen, prefixAddr)
 			}
 		}
-		return bgpSecString*/
-	return ""
+	}
 }
 
 // NewRPKIManager Create new RPKI manager instance
@@ -396,6 +393,8 @@ func NewRPKIManager(s *BgpServer) (*RPKIManager, error) {
 		Updates:   make([]*srx_update, 0),
 		StartTime: time.Now(),
 		Resets:    0,
+		Ready:     true,
+		Queue:     make([]*VerifyNotify, 0),
 	}
 	return rm, nil
 }
