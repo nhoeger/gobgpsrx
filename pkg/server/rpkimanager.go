@@ -25,19 +25,18 @@ import (
 ***********************************************************************/
 
 type RPKIManager struct {
-	AS        int
-	ID        int
-	Proxy     GoSRxProxy
-	Server    *BgpServer
-	Updates   []*srx_update
-	Queue     []*VerifyNotify
-	StartTime time.Time
-	Resets    int
-	Ready     bool
+	AS             int
+	ID             int
+	Proxy          GoSRxProxy
+	Server         *BgpServer
+	PendingUpdates []*srx_update
+	Queue          []*VerifyNotify
+	StartTime      time.Time
+	Resets         int
+	Ready          *bool
 }
 
 func hexToBinary(hexStr string) (string, error) {
-	log.Debug("String to convert: ", hexStr)
 	decimalValue, err := strconv.ParseInt(hexStr, 16, 64)
 	if err != nil {
 		return "", err
@@ -46,7 +45,6 @@ func hexToBinary(hexStr string) (string, error) {
 	for len(binaryStr) < 8 {
 		binaryStr = "0" + binaryStr
 	}
-	log.Debug("Returning: ", binaryStr)
 	return binaryStr, nil
 }
 
@@ -55,33 +53,29 @@ func (rm *RPKIManager) resultsFor(vn *VerifyNotify) (bool, bool, bool, bool) {
 	if err != nil {
 		log.Fatal("Conversion error!")
 	}
-	log.Debug("Binary String: ", tmp)
 	ROA := tmp[len(tmp)-1] == '1'
 	BGPsec := tmp[len(tmp)-2] == '1'
 	ASPA := tmp[len(tmp)-3] == '1'
 	ASCones := tmp[len(tmp)-4] == '1'
-	log.Info("Booleans: ", ROA, ", ", BGPsec, ", ", ASPA, ", ", ASCones)
 	return ROA, BGPsec, ASPA, ASCones
 }
 
 func (rm *RPKIManager) findUpdateInstance(token string, SRxID string) (*srx_update, int) {
-	for i, update := range rm.Updates {
+	for i, update := range rm.PendingUpdates {
 		locId := fmt.Sprintf("%08X", update.local_id)
-		if strings.ToLower(locId) == token || rm.Updates[i].srx_id == SRxID {
-			if rm.Updates[i].srx_id == "" {
-				log.Debug("Received SRX-ID.")
-				rm.Updates[i].srx_id = SRxID
+		if strings.ToLower(locId) == token || rm.PendingUpdates[i].srx_id == SRxID {
+			if rm.PendingUpdates[i].srx_id == "" {
+				rm.PendingUpdates[i].srx_id = SRxID
 			}
-			return rm.Updates[i], i
+			return rm.PendingUpdates[i], i
 		}
 	}
 	return nil, 0
 }
 
 func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
-	log.Info("Yep im here")
 	rm.Queue = append(rm.Queue, vn)
-	if rm.Ready {
+	if *rm.Ready {
 		rm.handleVerifyNotifyBuffer(rm.Queue[0])
 	}
 }
@@ -89,16 +83,18 @@ func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 // Callback function: The proxy can call this function when the SRx-Server sends a verify notify
 // Input is a raw string containing the message from the server and a pointer to the rpkimanager
 func (rm *RPKIManager) handleVerifyNotifyBuffer(vn *VerifyNotify) {
-	rm.Ready = false
-	invalid := false
-	if log.GetLevel() == log.DebugLevel {
+	*rm.Ready = false
+	//invalid := false
+	/*if log.GetLevel() == log.DebugLevel {
 		printValRes(*vn)
-	}
+	}*/
 
 	// Find the matching Update instance + index
 	update, i := rm.findUpdateInstance(vn.RequestToken, vn.UpdateIdentifier)
 	if update == nil {
 		//log.Fatal("Found no matching Update")
+		*rm.Ready = true
+		rm.Queue = rm.Queue[1:]
 		return
 	}
 
@@ -110,69 +106,77 @@ func (rm *RPKIManager) handleVerifyNotifyBuffer(vn *VerifyNotify) {
 			log.Debug("ROA validation result: Valid Update")
 			update.origin = true
 			rm.checkUpdate(i)
-		} else {
+		} /*else {
 			log.Debug("ROA validation result: Invalid Update")
-			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			//rm.InvalidUpdates = append(rm.InvalidUpdates, rm.StoredUpdates[i])
+			//rm.StoredUpdates = append(rm.StoredUpdates[:i], rm.StoredUpdates[i+1:]...)
 			invalid = true
-		}
+		}*/
 	}
-	if BGPsec && vn.PathResult != "03" && !invalid {
+	if BGPsec && vn.PathResult != "03" {
 		if vn.OriginResult == "00" {
 			log.Debug("Path validation result: Valid Update")
 			update.path = true
 			rm.checkUpdate(i)
-		} else {
+		} /*else {
 			log.Debug("Path validation result: Invalid Update")
-			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			rm.InvalidUpdates = append(rm.InvalidUpdates, rm.StoredUpdates[i])
+			rm.StoredUpdates = append(rm.StoredUpdates[:i], rm.StoredUpdates[i+1:]...)
 			invalid = true
-		}
+		}*/
 	}
-	if ASPA && vn.ASPAResult != "03" && !invalid {
+	if ASPA && vn.ASPAResult != "03" {
 		if vn.ASPAResult == "00" {
 			log.Debug("ASPA validation result: Valid Update")
 			update.aspa = true
 			rm.checkUpdate(i)
-		} else {
+		} /* else {
 			log.Debug("ASPA validation result: Invalid Update")
-			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			rm.InvalidUpdates = append(rm.InvalidUpdates, rm.StoredUpdates[i])
+			rm.StoredUpdates = append(rm.StoredUpdates[:i], rm.StoredUpdates[i+1:]...)
 			invalid = true
-		}
+		}*/
 	}
-	if ASCones && vn.ASConesResult != "03" && !invalid {
+	if ASCones && vn.ASConesResult != "03" {
 		if vn.ASConesResult == "00" {
 			log.Debug("AS-Cones validation result: Valid Update")
 			update.ascones = true
 			rm.checkUpdate(i)
-		} else {
+		} /*else {
 			log.Debug("AS-Cones validation result: Invalid Update")
-			rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+			rm.InvalidUpdates = append(rm.InvalidUpdates, rm.StoredUpdates[i])
+			rm.StoredUpdates = append(rm.StoredUpdates[:i], rm.StoredUpdates[i+1:]...)
 			invalid = true
-		}
+		} */
 	}
 	rm.Queue = rm.Queue[1:]
 	if len(rm.Queue) > 0 {
 		rm.handleVerifyNotifyBuffer(rm.Queue[0])
 	} else {
-		rm.Ready = true
+		*rm.Ready = true
 	}
-
+	log.Debug("+------------------------------------+")
+	log.Debug("Current Stats:")
+	//log.Debug("Current Update invalid: ", invalid)
+	log.Debug("Pending Updates:        ", len(rm.PendingUpdates))
+	log.Debug("+------------------------------------+")
 }
 
 // If all requested validations for an update return valid, the update is valid
 // and the routing daemon can further process it
 func (rm *RPKIManager) checkUpdate(i int) {
-	update := rm.Updates[i]
+	update := rm.PendingUpdates[i]
 	if update.origin && update.path && update.aspa && update.ascones {
 		rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
-		rm.Updates = append(rm.Updates[:i], rm.Updates[i+1:]...)
+		rm.PendingUpdates = append(rm.PendingUpdates[:i], rm.PendingUpdates[i+1:]...)
 	}
 }
 
 // Server send Sync message and Proxy responds with all cached updates
 func (rm *RPKIManager) handleSyncCallback() {
-	log.Debug("in sync callback function")
-	for _, Updates := range rm.Updates {
-		log.Debug("Requesting Validation for Update ", Updates.local_id)
+	log.Debug("In sync callback function!")
+	for _, Updates := range rm.PendingUpdates {
+		log.Debug("Requesting Validation for Update: ", Updates.local_id)
 		rm.validate(Updates.peer, Updates.bgpMsg, Updates.fsmMsg)
 	}
 }
@@ -181,10 +185,7 @@ func (rm *RPKIManager) handleSyncCallback() {
 // inputs: BGP peer, the message and message data
 func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	var updatesToSend []string
-	log.Info("Message: ", m)
-	log.Info("Message: ", m.Body)
-	log.Info("Message: ", e.MsgData)
-	log.Info("E: ", e)
+
 	// Iterate through all paths inside the BGP UPDATE message
 	for _, path := range e.PathList {
 		// Create new SRxUpdate for each path
@@ -281,11 +282,12 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		vm.length_path_val_data = fmt.Sprintf("%08X", tmpInt)
 		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
 
-		if log.GetLevel() == log.DebugLevel {
+		// Debug
+		/*if log.GetLevel() == log.DebugLevel {
 			printValReq(vm)
-		}
+		}*/
 		updatesToSend = append(updatesToSend, structToString(vm))
-		rm.Updates = append(rm.Updates, &update)
+		rm.PendingUpdates = append(rm.PendingUpdates, &update)
 		rm.ID = (rm.ID % 10000) + 1
 	}
 
@@ -387,15 +389,16 @@ func (rm *RPKIManager) validateBGPsecMessage(e *fsmMsg) {
 // Input: pointer to BGPServer
 func NewRPKIManager(s *BgpServer) (*RPKIManager, error) {
 	rm := &RPKIManager{
-		AS:        int(s.bgpConfig.Global.Config.As),
-		Server:    s,
-		ID:        1,
-		Updates:   make([]*srx_update, 0),
-		StartTime: time.Now(),
-		Resets:    0,
-		Ready:     true,
-		Queue:     make([]*VerifyNotify, 0),
+		AS:             int(s.bgpConfig.Global.Config.As),
+		Server:         s,
+		ID:             1,
+		PendingUpdates: make([]*srx_update, 0),
+		StartTime:      time.Now(),
+		Resets:         0,
+		Ready:          new(bool),
+		Queue:          make([]*VerifyNotify, 0),
 	}
+	*rm.Ready = true
 	return rm, nil
 }
 

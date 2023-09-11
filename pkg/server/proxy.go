@@ -118,7 +118,7 @@ func (proxy *GoSRxProxy) proxyBackgroundThread(wg *sync.WaitGroup) {
 		serverResponse := hex.EncodeToString(response[:n])
 		wg.Add(1)
 		proxy.processInput(serverResponse, wg)
-		log.Debug("Server Input: ", serverResponse)
+		// log.Debug("Server Input: ", serverResponse)
 	}
 }
 
