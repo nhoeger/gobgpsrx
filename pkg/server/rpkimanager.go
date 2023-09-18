@@ -181,11 +181,12 @@ func (rm *RPKIManager) handleSyncCallback() {
 	}
 }
 
+// TODO: Remove num hops and lenght path val data
 // Create a Validation message for an incoming BGP UPDATE message
 // inputs: BGP peer, the message and message data
 func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	var updatesToSend []string
-
+	rm.debuggingProxyFunction(peer, m, e)
 	// Iterate through all paths inside the BGP UPDATE message
 	for _, path := range e.PathList {
 		// Create new SRxUpdate for each path
@@ -215,8 +216,6 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			ASPADefaultResult:    "03",
 			prefix_len:           "18",
 			request_token:        fmt.Sprintf("%08X", update.local_id) + "03",
-			prefix:               "00000000",
-			origin_AS:            "0000fdec",
 			length_path_val_data: "00000008",
 			bgpsec_length:        "0000",
 			afi:                  "0000",
@@ -275,7 +274,7 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		tmp := hex.EncodeToString(prefixAddr)
 		vm.prefix = tmp[len(tmp)-8:]
 		vm.prefix_len = strconv.FormatInt(int64(prefixLen), 16)
-		vm.origin_AS = fmt.Sprintf("%08X", asList[len(asList)-1])
+		//vm.origin_AS = fmt.Sprintf("%08X", asList[len(asList)-1])
 		vm.num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
 		tmpInt := 4 * path.GetAsPathLen()
 		vm.Length = fmt.Sprintf("%08X", 61+tmpInt)
@@ -283,9 +282,9 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
 
 		// Debug
-		/*if log.GetLevel() == log.DebugLevel {
+		if log.GetLevel() == log.DebugLevel {
 			printValReq(vm)
-		}*/
+		}
 		updatesToSend = append(updatesToSend, structToString(vm))
 		rm.PendingUpdates = append(rm.PendingUpdates, &update)
 		rm.ID = (rm.ID % 10000) + 1
@@ -293,7 +292,80 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 
 	// call proxy function to send message to SRx-Server for each update path
 	for _, str := range updatesToSend {
-		validate_call(&rm.Proxy, str)
+		//validate_call(&rm.Proxy, str)
+		log.Debug("Output ValidateCall:", str)
+	}
+}
+
+func (rm *RPKIManager) debuggingProxyFunction(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
+	for _, path := range e.PathList {
+		var flag SRxVerifyFlag      // Done
+		var token int               // Done
+		var reqRes SRxDefaultResult // Done
+		var prefix IPPrefix         // Done
+		var ASN int                 // Done
+		var ASlist ASPathList       // Tmp Done
+		var BGPsec *BGPsecData      // TODO
+		BGPsec = nil
+
+		flag = 128
+		if rm.Server.bgpConfig.Global.Config.ROA {
+			flag += 1
+		}
+		if peer.fsm.pConf.Config.BgpsecEnable {
+			flag += 2
+		}
+		if rm.Server.bgpConfig.Global.Config.ASPA {
+			flag += 4
+		}
+		if rm.Server.bgpConfig.Global.Config.ASCONES {
+			flag += 8
+		}
+
+		token = rm.ID
+		rm.ID = (rm.ID % 10000) + 1
+
+		reqRes.resSourceBGPsec = SRxRSUnknown
+		reqRes.resSourceROA = SRxRSUnknown
+		reqRes.resSourceASPA = SRxRSUnknown
+		reqRes.resSourceASCones = SRxRSUnknown
+		srxRes := SRxResult{
+			ROAResult:     3,
+			BGPsecResult:  3,
+			ASPAResult:    3,
+			ASConesResult: 3,
+		}
+		reqRes.result = srxRes
+
+		prefixLen := 0
+		prefixAddr := net.ParseIP("0.0.0.0")
+		pathString := path.String()
+		words := strings.Fields(pathString)
+		for _, word := range words {
+			for j, ch := range word {
+				if ch == '/' {
+					tmpPref, _ := strconv.Atoi(word[j+1:])
+					prefixLen = tmpPref
+					prefixAddr = net.ParseIP(word[:j])
+				}
+			}
+		}
+		prefix.length = prefixLen
+		prefix.version = 4
+		prefix.address = prefixAddr
+
+		ASN = rm.AS
+		var array []int
+		asList := path.GetAsList()
+		for i, asn := range asList {
+			ASlist.length = i
+			ASlist.ASes = append(array, int(asn))
+
+			// TODO: Add Custom Relationships
+			ASlist.Relation = unknown
+		}
+		log.Debug("Finished loop")
+		rm.Proxy.createV4Request(flag, token, reqRes, prefix, ASN, ASlist, BGPsec)
 	}
 }
 
@@ -429,10 +501,10 @@ func printValReq(vm VerifyMessage) {
 	log.Debug("+----------------------------------+")
 	log.Debug("PDU:                   ", vm.PDU)
 	log.Debug("Flags:                 ", vm.Flags)
-	log.Debug("OriginResultSoruce:    ", vm.OriginResultSource)
-	log.Debug("PathResultSoruce:      ", vm.PathResultSource)
-	log.Debug("ASPAResultSoruce:      ", vm.ASPAResultSource)
-	log.Debug("ASConesResultSoruce:   ", vm.ASConesResultSource)
+	log.Debug("OriginResultSource:    ", vm.OriginResultSource)
+	log.Debug("PathResultSource:      ", vm.PathResultSource)
+	log.Debug("ASPAResultSource:      ", vm.ASPAResultSource)
+	log.Debug("ASConesResultSource:   ", vm.ASConesResultSource)
 	log.Debug("reserved:              ", vm.reserved)
 	log.Debug("ASPathType:            ", vm.ASPathType)
 	log.Debug("ASRelationType:        ", vm.ASRelationType)
