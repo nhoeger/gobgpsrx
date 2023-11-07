@@ -208,8 +208,8 @@ func (proxy *GoSRxProxy) createV4Request(method SRxVerifyFlag, token int, defRes
 		PathDefaultResult:    fmt.Sprintf("%02X", defRes.resSourceBGPsec),
 		ASPADefaultResult:    fmt.Sprintf("%02X", defRes.resSourceASPA),
 		prefix_len:           fmt.Sprintf("%02X", prefix.length),
-		request_token:        fmt.Sprintf("%08X", token),
-		ASConesDefaultResult: fmt.Sprintf("%02X", defRes.resSourceASCones),
+		request_token:        fmt.Sprintf("%08X", token) + fmt.Sprintf("%02X", defRes.result.ASConesResult),
+		ASConesDefaultResult: "",
 		prefix:               tmp[len(tmp)-8:],
 		origin_AS:            fmt.Sprintf("%08X", list.ASes[len(list.ASes)-1]),
 		local_as:             fmt.Sprintf("%08X", AS32),
@@ -231,9 +231,10 @@ func (proxy *GoSRxProxy) createV4Request(method SRxVerifyFlag, token int, defRes
 		request.local_as = fmt.Sprintf("%02X", data.localAS)
 		request.Length = fmt.Sprintf("%08X", 61+(data.NumberOfHops*4+data.AttrLength))
 	} else {
-		request.Length = fmt.Sprintf("%08X", 41)
-		request.num_of_hops = "0000"
-		request.length_path_val_data = "00000000"
+		request.num_of_hops = fmt.Sprintf("%04X", len(list.ASes))
+		tmpInt := 4 * len(list.ASes)
+		request.length_path_val_data = fmt.Sprintf("%08X", tmpInt)
+		request.Length = fmt.Sprintf("%08X", 61+tmpInt)
 		request.bgpsec_length = "0000"
 		request.afi = "0000"
 		request.safi = "00"
@@ -246,6 +247,7 @@ func (proxy *GoSRxProxy) createV4Request(method SRxVerifyFlag, token int, defRes
 
 	log.Debug("Proxy Message: ")
 	printValReq(request)
+	validate_call(*&proxy, structToString(request))
 }
 
 func (proxy *GoSRxProxy) verifyUpdate(localID int, ROA bool, BGPsec bool, ASPA bool, ASCones bool, result SRxDefaultResult, prefix IPPrefix, AS int, data *BGPsecData, list ASPathList) {

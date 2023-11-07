@@ -1620,8 +1620,9 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 				s.ProcessValidUpdate(peer, e, m)
 			} else if s.bgpConfig.Global.Config.ASPA || s.bgpConfig.Global.Config.ASCONES || s.bgpConfig.Global.Config.ROA {
 				// Update processing set on hold until the validation with the SRx-Server was successfull
-				s.rpkiManager.validate(peer, m, e)
-
+				//s.rpkiManager.validate(peer, m, e)
+				s.rpkiManager.debuggingProxyFunction(peer, m, e)
+				// rm.debuggingProxyFunction(peer, m, e)
 				// For Debugging Purpose only
 				/*var z config.RpkiValidationResultType
 				z = "invalid"

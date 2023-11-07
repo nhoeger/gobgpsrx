@@ -3,7 +3,6 @@ package server
 import "C"
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
@@ -83,11 +82,12 @@ func (rm *RPKIManager) handleVerifyNotify(vn *VerifyNotify) {
 // Callback function: The proxy can call this function when the SRx-Server sends a verify notify
 // Input is a raw string containing the message from the server and a pointer to the rpkimanager
 func (rm *RPKIManager) handleVerifyNotifyBuffer(vn *VerifyNotify) {
+	log.Debug("**Handle Verify Notify**")
 	*rm.Ready = false
 	//invalid := false
-	/*if log.GetLevel() == log.DebugLevel {
+	if log.GetLevel() == log.DebugLevel {
 		printValRes(*vn)
-	}*/
+	}
 
 	// Find the matching Update instance + index
 	update, i := rm.findUpdateInstance(vn.RequestToken, vn.UpdateIdentifier)
@@ -165,10 +165,15 @@ func (rm *RPKIManager) handleVerifyNotifyBuffer(vn *VerifyNotify) {
 // If all requested validations for an update return valid, the update is valid
 // and the routing daemon can further process it
 func (rm *RPKIManager) checkUpdate(i int) {
+	log.Debug("length: ", len(rm.PendingUpdates))
+	log.Debug("Contains: ", rm.PendingUpdates)
 	update := rm.PendingUpdates[i]
 	if update.origin && update.path && update.aspa && update.ascones {
+		log.Debug("In if")
 		rm.Server.ProcessValidUpdate(update.peer, update.fsmMsg, update.bgpMsg)
-		rm.PendingUpdates = append(rm.PendingUpdates[:i], rm.PendingUpdates[i+1:]...)
+		if len(rm.PendingUpdates) > 1 {
+			rm.PendingUpdates = append(rm.PendingUpdates[:i], rm.PendingUpdates[i+1:]...)
+		}
 	}
 }
 
@@ -177,16 +182,15 @@ func (rm *RPKIManager) handleSyncCallback() {
 	log.Debug("In sync callback function!")
 	for _, Updates := range rm.PendingUpdates {
 		log.Debug("Requesting Validation for Update: ", Updates.local_id)
-		rm.validate(Updates.peer, Updates.bgpMsg, Updates.fsmMsg)
+		rm.debuggingProxyFunction(Updates.peer, Updates.bgpMsg, Updates.fsmMsg)
 	}
 }
 
 // TODO: Remove num hops and lenght path val data
 // Create a Validation message for an incoming BGP UPDATE message
 // inputs: BGP peer, the message and message data
-func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
+/*func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	var updatesToSend []string
-	rm.debuggingProxyFunction(peer, m, e)
 	// Iterate through all paths inside the BGP UPDATE message
 	for _, path := range e.PathList {
 		// Create new SRxUpdate for each path
@@ -292,20 +296,31 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 
 	// call proxy function to send message to SRx-Server for each update path
 	for _, str := range updatesToSend {
-		//validate_call(&rm.Proxy, str)
+		validate_call(&rm.Proxy, str)
 		log.Debug("Output ValidateCall:", str)
 	}
-}
+}*/
 
 func (rm *RPKIManager) debuggingProxyFunction(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	for _, path := range e.PathList {
-		var flag SRxVerifyFlag      // Done
-		var token int               // Done
-		var reqRes SRxDefaultResult // Done
-		var prefix IPPrefix         // Done
-		var ASN int                 // Done
-		var ASlist ASPathList       // Tmp Done
-		var BGPsec *BGPsecData      // TODO
+		update := srx_update{
+			local_id: rm.ID,
+			srx_id:   "",
+			peer:     peer,
+			fsmMsg:   e,
+			bgpMsg:   m,
+			origin:   true,
+			path:     true,
+			aspa:     true,
+			ascones:  true,
+		}
+		var flag SRxVerifyFlag
+		var token int
+		var reqRes SRxDefaultResult
+		var prefix IPPrefix
+		var ASN int
+		var ASlist ASPathList
+		var BGPsec *BGPsecData // TODO
 		BGPsec = nil
 
 		flag = 128
@@ -360,11 +375,11 @@ func (rm *RPKIManager) debuggingProxyFunction(peer *peer, m *bgp.BGPMessage, e *
 		for i, asn := range asList {
 			ASlist.length = i
 			ASlist.ASes = append(array, int(asn))
-
-			// TODO: Add Custom Relationships
+			ASlist.ASType = ASSequence
 			ASlist.Relation = unknown
 		}
-		log.Debug("Finished loop")
+		rm.PendingUpdates = append(rm.PendingUpdates, &update)
+		rm.ID = (rm.ID % 10000) + 1
 		rm.Proxy.createV4Request(flag, token, reqRes, prefix, ASN, ASlist, BGPsec)
 	}
 }
