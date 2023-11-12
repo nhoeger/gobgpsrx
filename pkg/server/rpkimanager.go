@@ -182,126 +182,11 @@ func (rm *RPKIManager) handleSyncCallback() {
 	log.Debug("In sync callback function!")
 	for _, Updates := range rm.PendingUpdates {
 		log.Debug("Requesting Validation for Update: ", Updates.local_id)
-		rm.debuggingProxyFunction(Updates.peer, Updates.bgpMsg, Updates.fsmMsg)
+		rm.validate(Updates.peer, Updates.bgpMsg, Updates.fsmMsg)
 	}
 }
 
-// TODO: Remove num hops and lenght path val data
-// Create a Validation message for an incoming BGP UPDATE message
-// inputs: BGP peer, the message and message data
-/*func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
-	var updatesToSend []string
-	// Iterate through all paths inside the BGP UPDATE message
-	for _, path := range e.PathList {
-		// Create new SRxUpdate for each path
-		update := srx_update{
-			local_id: rm.ID,
-			srx_id:   "",
-			peer:     peer,
-			fsmMsg:   e,
-			bgpMsg:   m,
-			origin:   true,
-			path:     true,
-			aspa:     true,
-			ascones:  true,
-		}
-		// Create new message for each path
-		vm := VerifyMessage{
-			PDU:                  "03",
-			OriginResultSource:   "01",
-			PathResultSource:     "01",
-			ASPAResultSource:     "01",
-			reserved:             "01",
-			ASPathType:           "02",
-			ASRelationType:       "04",
-			Length:               "00000044",
-			OriginDefaultResult:  "03",
-			PathDefaultResult:    "03",
-			ASPADefaultResult:    "03",
-			prefix_len:           "18",
-			request_token:        fmt.Sprintf("%08X", update.local_id) + "03",
-			length_path_val_data: "00000008",
-			bgpsec_length:        "0000",
-			afi:                  "0000",
-			safi:                 "00",
-			prefix_len_bgpsec:    "00",
-			ip_pre_add_byte_a:    "00000000",
-			ip_pre_add_byte_b:    "00000000",
-			ip_pre_add_byte_c:    "00000000",
-			ip_pre_add_byte_d:    "00000000",
-			local_as:             fmt.Sprintf("%08X", rm.AS),
-			as_path_list:         "",
-			bgpsec:               "",
-		}
-		tmpFlag := 128
-		if rm.Server.bgpConfig.Global.Config.ROA {
-			tmpFlag += 1
-			update.origin = false
-		}
-		if peer.fsm.pConf.Config.BgpsecEnable {
-			tmpFlag += 2
-
-			//vm.bgpsec = rm.GenerateBGPSecFields(e)
-			update.path = false
-		}
-		if rm.Server.bgpConfig.Global.Config.ASPA {
-			tmpFlag += 4
-			log.Debug("Generating ASPA Request")
-			update.aspa = false
-		}
-		if rm.Server.bgpConfig.Global.Config.ASCONES {
-			tmpFlag += 8
-			log.Debug("Generating AS-Cones Request")
-			update.ascones = false
-		}
-		vm.Flags = fmt.Sprintf("%02X", tmpFlag)
-
-		asList := path.GetAsList()
-		for _, asn := range asList {
-			hexValue := fmt.Sprintf("%08X", asn)
-			vm.as_path_list += hexValue
-
-		}
-		prefixLen := 0
-		prefixAddr := net.ParseIP("0.0.0.0")
-		pathString := path.String()
-		words := strings.Fields(pathString)
-		for _, word := range words {
-			for j, ch := range word {
-				if ch == '/' {
-					tmpPref, _ := strconv.Atoi(word[j+1:])
-					prefixLen = tmpPref
-					prefixAddr = net.ParseIP(word[:j])
-				}
-			}
-		}
-		tmp := hex.EncodeToString(prefixAddr)
-		vm.prefix = tmp[len(tmp)-8:]
-		vm.prefix_len = strconv.FormatInt(int64(prefixLen), 16)
-		//vm.origin_AS = fmt.Sprintf("%08X", asList[len(asList)-1])
-		vm.num_of_hops = fmt.Sprintf("%04X", path.GetAsPathLen())
-		tmpInt := 4 * path.GetAsPathLen()
-		vm.Length = fmt.Sprintf("%08X", 61+tmpInt)
-		vm.length_path_val_data = fmt.Sprintf("%08X", tmpInt)
-		vm.origin_AS = fmt.Sprintf("%08X", path.GetSourceAs())
-
-		// Debug
-		if log.GetLevel() == log.DebugLevel {
-			printValReq(vm)
-		}
-		updatesToSend = append(updatesToSend, structToString(vm))
-		rm.PendingUpdates = append(rm.PendingUpdates, &update)
-		rm.ID = (rm.ID % 10000) + 1
-	}
-
-	// call proxy function to send message to SRx-Server for each update path
-	for _, str := range updatesToSend {
-		validate_call(&rm.Proxy, str)
-		log.Debug("Output ValidateCall:", str)
-	}
-}*/
-
-func (rm *RPKIManager) debuggingProxyFunction(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
+func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 	for _, path := range e.PathList {
 		update := srx_update{
 			local_id: rm.ID,
@@ -309,10 +194,10 @@ func (rm *RPKIManager) debuggingProxyFunction(peer *peer, m *bgp.BGPMessage, e *
 			peer:     peer,
 			fsmMsg:   e,
 			bgpMsg:   m,
-			origin:   true,
-			path:     true,
-			aspa:     true,
-			ascones:  true,
+			origin:   !rm.Server.bgpConfig.Global.Config.ROA,
+			path:     !peer.fsm.pConf.Config.BgpsecEnable,
+			aspa:     !rm.Server.bgpConfig.Global.Config.ASPA,
+			ascones:  !rm.Server.bgpConfig.Global.Config.ASCONES,
 		}
 		var flag SRxVerifyFlag
 		var token int

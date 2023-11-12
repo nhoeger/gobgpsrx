@@ -280,7 +280,7 @@ func (proxy *GoSRxProxy) verifyUpdate(localID int, ROA bool, BGPsec bool, ASPA b
 	}
 
 	if isV4 {
-		log.Debug("Debug: ASCONE - verifyUpdate - createV4Request - length: %u localID: %08X\n", length, localID)
+		log.Debug("Debug: ASCONE - verifyUpdate - createV4Request")
 		proxy.createV4Request(method, localID, result, prefix, AS, list, data)
 	} else {
 		log.Debug("Debug: ASCONE - verifyUpdate - createV6Request")

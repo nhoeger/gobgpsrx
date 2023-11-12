@@ -1605,7 +1605,7 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			}
 			if s.bgpConfig.Global.Config.ASPA || s.bgpConfig.Global.Config.ASCONES || s.bgpConfig.Global.Config.ROA || peer.fsm.pConf.Config.BgpsecEnable {
 				// Validate updated; Config files defines the used method.
-				s.rpkiManager.debuggingProxyFunction(peer, m, e)
+				s.rpkiManager.validate(peer, m, e)
 			} else {
 				// No validation requested; handle update as if it is valid.
 				s.ProcessValidUpdate(peer, e, m)
