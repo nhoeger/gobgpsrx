@@ -274,15 +274,16 @@ func (proxy *GoSRxProxy) verifyUpdate(localID int, ROA bool, BGPsec bool, ASPA b
 		method |= SRX_FLAG_REQUEST_RECEIPT
 	}
 
-	/*BGPsecLength := 0
-	if data != nil {
-		BGPsecLength = (data.NumberOfHops * 4) + data.AttrLength
-	}
 	isV4 := prefix.version == 4
-	length := if isV4:
+	if isV4 {
+		log.Debug("Debug: verifyUpdate - prefix->addr: ", prefix.address)
+	}
 
 	if isV4 {
-
-	}*/
+		log.Debug("Debug: ASCONE - verifyUpdate - createV4Request - length: %u localID: %08X\n", length, localID)
+		proxy.createV4Request(method, localID, result, prefix, AS, list, data)
+	} else {
+		log.Debug("Debug: ASCONE - verifyUpdate - createV6Request")
+	}
 
 }

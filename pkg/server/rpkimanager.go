@@ -380,7 +380,7 @@ func (rm *RPKIManager) debuggingProxyFunction(peer *peer, m *bgp.BGPMessage, e *
 		}
 		rm.PendingUpdates = append(rm.PendingUpdates, &update)
 		rm.ID = (rm.ID % 10000) + 1
-		rm.Proxy.createV4Request(flag, token, reqRes, prefix, ASN, ASlist, BGPsec)
+		rm.Proxy.verifyUpdate(token, rm.Server.bgpConfig.Global.Config.ROA, peer.fsm.pConf.Config.BgpsecEnable, rm.Server.bgpConfig.Global.Config.ASPA, rm.Server.bgpConfig.Global.Config.ASCONES, reqRes, prefix, ASN, BGPsec, ASlist)
 	}
 }
 
