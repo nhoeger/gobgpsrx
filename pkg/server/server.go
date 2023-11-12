@@ -1595,7 +1595,6 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			sendfsmOutgoingMsg(peer, nil, bgp.NewBGPNotificationMessage(m.TypeCode, m.SubTypeCode, m.Data), false)
 			return
 		case *bgp.BGPMessage:
-			//log.Info("Received an Update. Starting to extract the information.")
 			s.notifyRecvMessageWatcher(peer, e.timestamp, m)
 			peer.fsm.lock.RLock()
 			notEstablished := peer.fsm.state != bgp.BGP_FSM_ESTABLISHED
@@ -1604,39 +1603,11 @@ func (s *BgpServer) handleFSMMessage(peer *peer, e *fsmMsg) {
 			if notEstablished || beforeUptime {
 				return
 			}
-			if peer.fsm.pConf.Config.BgpsecEnable {
-				log.Debug("Peer: BGPsecEnable; Parsing update to manager.")
-				//s.rpkiManager.validateBGPsecMessage(e)
-				var z config.RpkiValidationResultType
-				z = "invalid"
-				log.Debug("Marking as invalid...")
-				for _, path := range e.PathList {
-					log.Debug("Pathlist: ", path)
-				}
-				e.PathList[0].SetBgpsecValidation(z)
-				e.PathList[0].SetDropped(true)
-				e.PathList[0].SetRejected(true)
-				e.PathList[0].SetRpkiValidation(z)
-				s.ProcessValidUpdate(peer, e, m)
-			} else if s.bgpConfig.Global.Config.ASPA || s.bgpConfig.Global.Config.ASCONES || s.bgpConfig.Global.Config.ROA {
-				// Update processing set on hold until the validation with the SRx-Server was successfull
-				//s.rpkiManager.validate(peer, m, e)
+			if s.bgpConfig.Global.Config.ASPA || s.bgpConfig.Global.Config.ASCONES || s.bgpConfig.Global.Config.ROA || peer.fsm.pConf.Config.BgpsecEnable {
+				// Validate updated; Config files defines the used method.
 				s.rpkiManager.debuggingProxyFunction(peer, m, e)
-				// rm.debuggingProxyFunction(peer, m, e)
-				// For Debugging Purpose only
-				/*var z config.RpkiValidationResultType
-				z = "invalid"
-				log.Debug("Marking as invalid...")
-				for _, path := range e.PathList {
-					log.Debug("Pathlist: ", path)
-				}
-				e.PathList[0].SetBgpsecValidation(z)
-				e.PathList[0].SetDropped(true)
-				e.PathList[0].SetRejected(true)
-				e.PathList[0].SetRpkiValidation(z)
-				s.ProcessValidUpdate(peer, e, m)*/
-				// --------------------------------------
 			} else {
+				// No validation requested; handle update as if it is valid.
 				s.ProcessValidUpdate(peer, e, m)
 			}
 			return
