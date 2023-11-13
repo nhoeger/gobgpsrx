@@ -187,7 +187,12 @@ func (rm *RPKIManager) handleSyncCallback() {
 }
 
 func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
+	log.Debug("Validating...")
+	log.Debug("Message: ", m)
+	log.Debug("FsmMsg:  ", e)
+
 	for _, path := range e.PathList {
+		log.Debug("Path list: ", path)
 		update := srx_update{
 			local_id: rm.ID,
 			srx_id:   "",
@@ -200,13 +205,13 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			ascones:  !rm.Server.bgpConfig.Global.Config.ASCONES,
 		}
 		var flag SRxVerifyFlag
-		var token int
+		//var token int
 		var reqRes SRxDefaultResult
 		var prefix IPPrefix
-		var ASN int
+		//var ASN int
 		var ASlist ASPathList
-		var BGPsec *BGPsecData // TODO
-		BGPsec = nil
+		//var BGPsec *BGPsecData // TODO
+		//BGPsec = nil
 
 		flag = 128
 		if rm.Server.bgpConfig.Global.Config.ROA {
@@ -222,7 +227,7 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 			flag += 8
 		}
 
-		token = rm.ID
+		//token = rm.ID
 		rm.ID = (rm.ID % 10000) + 1
 
 		reqRes.resSourceBGPsec = SRxRSUnknown
@@ -254,7 +259,6 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		prefix.version = 4
 		prefix.address = prefixAddr
 
-		ASN = rm.AS
 		var array []int
 		asList := path.GetAsList()
 		for i, asn := range asList {
@@ -265,7 +269,7 @@ func (rm *RPKIManager) validate(peer *peer, m *bgp.BGPMessage, e *fsmMsg) {
 		}
 		rm.PendingUpdates = append(rm.PendingUpdates, &update)
 		rm.ID = (rm.ID % 10000) + 1
-		rm.Proxy.verifyUpdate(token, rm.Server.bgpConfig.Global.Config.ROA, peer.fsm.pConf.Config.BgpsecEnable, rm.Server.bgpConfig.Global.Config.ASPA, rm.Server.bgpConfig.Global.Config.ASCONES, reqRes, prefix, ASN, BGPsec, ASlist)
+		//rm.Proxy.verifyUpdate(token, rm.Server.bgpConfig.Global.Config.ROA, peer.fsm.pConf.Config.BgpsecEnable, rm.Server.bgpConfig.Global.Config.ASPA, rm.Server.bgpConfig.Global.Config.ASCONES, reqRes, prefix, rm.AS, BGPsec, ASlist)
 	}
 }
 

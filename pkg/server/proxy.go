@@ -1,15 +1,17 @@
 package server
 
+import "C"
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/osrg/gobgp/pkg/packet/bgp"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"reflect"
 	"strconv"
 	"sync"
 	"time"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type GoSRxProxy struct {
@@ -286,4 +288,143 @@ func (proxy *GoSRxProxy) verifyUpdate(localID int, ROA bool, BGPsec bool, ASPA b
 		log.Debug("Debug: ASCONE - verifyUpdate - createV6Request")
 	}
 
+}
+
+func (proxy *GoSRxProxy) validateBGPsec(e *fsmMsg, vm *VerifyMessage) {
+	log.Debug("Starting with the following VerifyMessage: ", vm)
+	m := e.MsgData.(*bgp.BGPMessage)
+	update := m.Body.(*bgp.BGPUpdate)
+
+	var nlri_processed bool
+	var prefix_addr net.IP
+	var prefix_len uint8
+	var nlri_afi uint16
+	var nlri_safi uint8
+
+	// find the position of bgpsec attribute
+	//
+	data := e.payload
+	data = data[bgp.BGP_HEADER_LENGTH:]
+	if update.WithdrawnRoutesLen > 0 {
+		data = data[2+update.WithdrawnRoutesLen:]
+	} else {
+		data = data[2:]
+	}
+
+	data = data[2:]
+	for pathlen := update.TotalPathAttributeLen; pathlen > 0; {
+		p, _ := bgp.GetPathAttribute(data)
+		p.DecodeFromBytes(data)
+
+		pathlen -= uint16(p.Len())
+
+		if bgp.BGPAttrType(data[1]) != bgp.BGP_ATTR_TYPE_BGPSEC {
+			data = data[p.Len():]
+		} else {
+			break
+		}
+	}
+
+	//
+	// find nlri attribute first and extract prefix info for bgpsec validation
+	//
+	for _, path := range e.PathList {
+
+		// find MP NLRI attribute first
+		for _, p := range path.GetPathAttrs() {
+			typ := uint(p.GetType())
+			if typ == uint(bgp.BGP_ATTR_TYPE_MP_REACH_NLRI) {
+				log.Debug("received MP NLRI: %#v", path)
+				prefix_addr = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Prefix
+				prefix_len = p.(*bgp.PathAttributeMpReachNLRI).Value[0].(*bgp.IPAddrPrefix).Length
+				nlri_afi = p.(*bgp.PathAttributeMpReachNLRI).AFI
+				nlri_safi = p.(*bgp.PathAttributeMpReachNLRI).SAFI
+
+				log.WithFields(log.Fields{"Topic": "Bgpsec"}).Debug("prefix:", prefix_addr, prefix_len, nlri_afi, nlri_safi)
+				nlri_processed = true
+				log.Debug("received MP NLRI: %#v", nlri_processed)
+			}
+		}
+
+		// find the BGPSec atttribute
+		for _, p := range path.GetPathAttrs() {
+			typ := uint(p.GetType())
+			if typ == uint(bgp.BGP_ATTR_TYPE_BGPSEC) && nlri_processed {
+				log.Debug("BGPsec validation start ")
+
+				/*myas  := proxy.ASN
+				big2 := make([]byte, 4, 4)
+				for i := 0; i < 4; i++ {
+					u8 := *(*uint8)(unsafe.Pointer(uintptr(unsafe.Pointer(&myas)) + uintptr(i)))
+					big2 = append(big2, u8)
+				}*/
+
+				/*valData := C.SCA_BGPSecValidationData{
+					myAS:             C.uint(binary.BigEndian.Uint32(big2[4:8])),
+					status:           C.sca_status_t(0),
+					bgpsec_path_attr: nil,
+					nlri:             nil,
+					hashMessage:      [2](*C.SCA_HashMessage){},
+				}*/
+
+				var bsPathAttrLength int
+				Flags := bgp.BGPAttrFlag(data[0])
+				if Flags&bgp.BGP_ATTR_FLAG_EXTENDED_LENGTH != 0 {
+					bsPathAttrLength = int(binary.BigEndian.Uint16(data[2:4]))
+				} else {
+					bsPathAttrLength = int(uint16(data[2]))
+				}
+
+				bsPathAttrLength = bsPathAttrLength + 4 // flag(1) + length(1) + its own length octet (2)
+				data = data[:bsPathAttrLength]
+
+				//bsPathAttr := data
+
+				/*binary.Write(buf, binary.BigEndian, bsPathAttr)
+				bl := buf.Len()
+				o := (*[1 << 20]C.uchar)(pa)
+
+				for i := 0; i < bl; i++ {
+					b, _ := buf.ReadByte()
+					o[i] = C.uchar(b)
+				}
+				valData.bgpsec_path_attr = (*C.uchar)(pa)*/
+
+				// prefix handling
+				//
+				//prefix2 := (*C.SCA_Prefix)(C.malloc(C.sizeof_SCA_Prefix))
+				//defer C.free(unsafe.Pointer(prefix2))
+				/*px := &Go_SCA_Prefix{
+					Afi:    nlri_afi,
+					Safi:   nlri_safi,
+					Length: prefix_len,
+					Addr:   [16]byte{},
+				}*/
+
+				/*pxip := prefix_addr
+				copy(px.Addr[:], pxip)
+				px.Pack(unsafe.Pointer(prefix2))
+				/* comment out for performance measurement
+				C.PrintSCA_Prefix(*prefix2)
+				*/
+				//log.Debug("prefix2 : %#v", prefix2)
+
+				/*valData.nlri = prefix2
+				log.Debug("valData : %#v", valData)
+				log.Debug("valData.bgpsec_path_attr : %#v", valData.bgpsec_path_attr)
+				/* comment out for performance measurement
+				C.printHex(C.int(bs_path_attr_length), valData.bgpsec_path_attr)
+				*/
+				//log.Debug("valData.nlri : %#v", *valData.nlri)
+
+				//bm.bgpsecValData = valData
+				// call validate
+				//ret := C.validate(&valData)
+
+			} // end of if - bgpsec validation process
+		} // end of if, get path attr
+	} // end of if - path list
+
+	//vm.afi = nlri_afi
+	log.Debug("Ending with the following VerifyMessage: ", vm)
 }
